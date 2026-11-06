@@ -1,3 +1,5 @@
+import { normalizeUrl } from "./normalize-url.mjs";
+
 const PYODIDE_VERSION = "314.0.7";
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const SAMPLE_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm";
@@ -14,6 +16,9 @@ const errorEl = document.querySelector("#error");
 const resultEl = document.querySelector("#result");
 const saveButton = document.querySelector("#save");
 const logEl = document.querySelector("#log");
+const normalizedEl = document.querySelector("#normalized");
+const normalizedUrlEl = document.querySelector("#normalized-url");
+const normalizedNoteEl = document.querySelector("#normalized-note");
 
 let pyodidePromise = null;
 let saveUrl = null;
@@ -21,14 +26,18 @@ let busy = false;
 
 sampleButton.addEventListener("click", () => {
   urlInput.value = SAMPLE_URL;
+  refreshNormalized();
   urlInput.focus();
 });
 
+urlInput.addEventListener("input", refreshNormalized);
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  const url = urlInput.value.trim();
-  if (!url || busy) return;
-  run(url);
+  const raw = urlInput.value.trim();
+  if (!raw || busy) return;
+  refreshNormalized();
+  run(normalizeUrl(raw), raw);
 });
 
 saveButton.addEventListener("click", () => {
@@ -159,13 +168,26 @@ function loadScript(src) {
   });
 }
 
-async function run(url) {
+function refreshNormalized() {
+  const raw = urlInput.value.trim();
+  if (!raw) {
+    normalizedEl.hidden = true;
+    return;
+  }
+  const next = normalizeUrl(raw);
+  normalizedEl.hidden = false;
+  normalizedUrlEl.textContent = next;
+  normalizedNoteEl.hidden = next === raw;
+}
+
+async function run(url, raw = url) {
   setBusy(true);
   hideError();
   resetResult();
   progressWrap.hidden = true;
   bar.classList.remove("indeterminate");
   bar.style.width = "0%";
+  if (raw !== url) appendLog(`入力を単体動画の URL に揃えました: ${url}`);
   appendLog(`--- ${url}`);
   try {
     const pyodide = await loadRuntime();

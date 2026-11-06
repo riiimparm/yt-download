@@ -67,6 +67,28 @@ input[type="url"] {
   color: var(--ink);
 }
 
+.normalized {
+  margin: 0.7rem 0 0;
+}
+
+.normalized-label {
+  display: block;
+  font: 600 0.82rem/1.4 ui-sans-serif, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  color: var(--muted);
+}
+
+#normalized-url {
+  display: block;
+  margin-top: 0.15rem;
+  font: 0.9rem/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+#normalized-note:not([hidden]) {
+  display: block;
+  margin: 0.25rem 0 0;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

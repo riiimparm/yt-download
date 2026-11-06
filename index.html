@@ -31,6 +31,11 @@
           spellcheck="false"
           placeholder="https://example.com/video.webm"
         />
+        <p id="normalized" class="normalized" hidden>
+          <span class="normalized-label">処理する URL</span>
+          <code id="normalized-url"></code>
+          <span id="normalized-note" class="hint" hidden>再生リスト用のパラメータは捨てました。YouTube の取得は CORS のため失敗します。</span>
+        </p>
         <div class="actions">
           <button type="submit" id="run">実行</button>
           <button type="button" id="sample">動作確認用の URL を入れる</button>
