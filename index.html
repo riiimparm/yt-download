@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ブラウザ内 yt-dlp</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='2' fill='%231f4d3a'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Pyodide · yt-dlp · このブラウザの中だけ</p>
+      <h1>ブラウザ内で yt-dlp を実行</h1>
+      <p class="lead">
+        yt-dlp は WebAssembly 上の Python（Pyodide）で動きます。入力した URL をアプリのサーバへ送る処理はありません。
+        相手のサイトが CORS を許可していない場合、ブラウザが通信を拒否します。
+      </p>
+    </header>
+
+    <section class="panel" aria-labelledby="run-heading">
+      <h2 id="run-heading">実行</h2>
+      <form id="form">
+        <label for="url">動画またはファイルの URL</label>
+        <input
+          id="url"
+          name="url"
+          type="url"
+          required
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="https://example.com/video.webm"
+        />
+        <div class="actions">
+          <button type="submit" id="run">実行</button>
+          <button type="button" id="sample">動作確認用の URL を入れる</button>
+        </div>
+      </form>
+      <p class="hint">
+        動作確認用は MDN の CC0 動画（直接の webm）です。CORS が開いているので、抽出・ダウンロード・保存まで通ります。
+        初回は Pyodide と yt-dlp の読み込みに時間がかかります。
+      </p>
+
+      <p id="status" role="status">URL を入れて実行してください。</p>
+      <div id="progress" hidden>
+        <div class="track" aria-hidden="true"><div id="bar"></div></div>
+        <p id="progress-text"></p>
+      </div>
+
+      <div id="error" role="alert" hidden></div>
+
+      <section id="result" hidden aria-live="polite">
+        <h3>保存できるファイル</h3>
+        <dl>
+          <div><dt>タイトル</dt><dd id="meta-title"></dd></div>
+          <div><dt>抽出器</dt><dd id="meta-extractor"></dd></div>
+          <div><dt>ファイル</dt><dd id="meta-file"></dd></div>
+          <div><dt>サイズ</dt><dd id="meta-size"></dd></div>
+        </dl>
+        <button type="button" id="save">ファイルを保存</button>
+        <p id="extra-files" class="hint" hidden></p>
+      </section>
+
+      <details>
+        <summary>ログ</summary>
+        <pre id="log"></pre>
+      </details>
+    </section>
+
+    <section class="limits" aria-labelledby="limits-heading">
+      <h2 id="limits-heading">実測した範囲</h2>
+      <div class="cols">
+        <div>
+          <h3>できる</h3>
+          <ul>
+            <li>ブラウザ内で yt-dlp 2026.10.26 を起動する</li>
+            <li>CORS を許可している URL から情報を抽出する</li>
+            <li>そのメディアをメモリ上に受け取り、ファイルとして保存する</li>
+          </ul>
+        </div>
+        <div>
+          <h3>できない</h3>
+          <ul>
+            <li>YouTube の視聴ページと youtubei API（CORS で拒否）</li>
+            <li>Internet Archive の詳細ページ、埋め込みページ、動画ファイル（CORS で拒否）</li>
+            <li>ffmpeg が必要な結合・再エンコード</li>
+            <li>プレイリストの一括取得</li>
+          </ul>
+        </div>
+      </div>
+      <p class="hint">
+        拡張機能や、利用者が自分で動かす CORS 転送プロキシがあれば届く通信は増えます。このページにはそれらを同梱していません。
+        詳細は README を見てください。
+      </p>
+    </section>
+  </main>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
