@@ -1,4 +1,5 @@
 import { normalizeUrl } from "./normalize-url.mjs";
+import { createRelayFetch, probeRelay, wrapXMLHttpRequest } from "./relay-client.mjs";
 
 const PYODIDE_VERSION = "314.0.7";
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
@@ -23,6 +24,8 @@ const normalizedNoteEl = document.querySelector("#normalized-note");
 let pyodidePromise = null;
 let saveUrl = null;
 let busy = false;
+let relayOn = false;
+let relayReady = null;
 
 sampleButton.addEventListener("click", () => {
   urlInput.value = SAMPLE_URL;
@@ -76,9 +79,11 @@ function hideError() {
 
 function showError(summary, detail) {
   const cors = /Failed to fetch|CORS|Access-Control|net::ERR_FAILED/i.test(`${summary}\n${detail || ""}`);
-  const head = cors
-    ? "ブラウザが通信を拒否しました。相手が Access-Control-Allow-Origin を返していないため、このページからは応答を読めません。yt-dlp は起動していますが、その URL の中身は取得できません。"
-    : "yt-dlp が完了しませんでした。";
+  const head = !cors
+    ? "yt-dlp が完了しませんでした。"
+    : relayOn
+      ? "通信に失敗しました。中継か、その先のサーバが応答を返せていません。"
+      : "ブラウザが通信を拒否しました。相手が Access-Control-Allow-Origin を返していないため、このページからは応答を読めません。yt-dlp は起動していますが、その URL の中身は取得できません。";
   errorEl.hidden = false;
   errorEl.textContent = detail ? `${head}\n${summary}` : `${head}\n${summary}`;
 }
@@ -136,7 +141,29 @@ async function loadRuntime() {
   return pyodidePromise;
 }
 
+function ensureRelay() {
+  if (!relayReady) {
+    relayReady = (async () => {
+      const nativeFetch = globalThis.fetch.bind(globalThis);
+      const on = await probeRelay(nativeFetch);
+      if (!on) return false;
+      const origin = location.origin;
+      globalThis.fetch = createRelayFetch(nativeFetch, origin);
+      if (typeof globalThis.XMLHttpRequest === "function") {
+        globalThis.XMLHttpRequest = wrapXMLHttpRequest(globalThis.XMLHttpRequest, origin);
+      }
+      relayOn = true;
+      refreshNormalized();
+      return true;
+    })();
+  }
+  return relayReady;
+}
+
+ensureRelay();
+
 async function startRuntime() {
+  await ensureRelay();
   setStatus("Pyodide を読み込んでいます。");
   appendLog(`Pyodide ${PYODIDE_VERSION} を読み込みます。`);
   await loadScript(`${PYODIDE_BASE}pyodide.js`);
@@ -177,6 +204,9 @@ function refreshNormalized() {
   const next = normalizeUrl(raw);
   normalizedEl.hidden = false;
   normalizedUrlEl.textContent = next;
+  normalizedNoteEl.textContent = relayOn
+    ? "単体の動画 URL に揃えました。YouTube 宛の通信はこのオリジンの中継を通ります。中継できても、YouTube 側が拒否すれば失敗します。"
+    : "単体の動画 URL に揃えました。中継が無いので、YouTube の取得は CORS のため失敗します。";
   normalizedNoteEl.hidden = next === raw;
 }
 

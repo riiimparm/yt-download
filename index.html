@@ -13,8 +13,9 @@
     <header>
       <h1>ブラウザ内で yt-dlp を実行</h1>
       <p class="lead">
-        yt-dlp は WebAssembly 上の Python（Pyodide）で動きます。入力した URL をアプリのサーバへ送る処理はありません。
-        相手のサイトが CORS を許可していない場合、ブラウザが通信を拒否します。
+        yt-dlp は WebAssembly 上の Python（Pyodide）で動きます。
+        このオリジンに中継（/proxy）があるとき、許可した YouTube 系の宛先だけをそこへ渡します。
+        中継が無い静的配信では、ブラウザが相手へ直接通信します。直接通信では、相手が CORS を許可していない応答は読めません。
       </p>
     </header>
 
@@ -34,7 +35,7 @@
         <p id="normalized" class="normalized" hidden>
           <span class="normalized-label">処理する URL</span>
           <code id="normalized-url"></code>
-          <span id="normalized-note" class="hint" hidden>単体の動画 URL に揃えました。YouTube の取得は CORS のため失敗します。</span>
+          <span id="normalized-note" class="hint" hidden>単体の動画 URL に揃えました。中継が無いので、YouTube の取得は CORS のため失敗します。</span>
         </p>
         <div class="actions">
           <button type="submit" id="run">実行</button>
@@ -80,21 +81,22 @@
           <ul>
             <li>ブラウザ内で yt-dlp 2026.10.26 を起動する</li>
             <li>CORS を許可している URL から情報を抽出する</li>
+            <li>Workers で配信しているとき、許可した YouTube 系ホストを同一オリジンの中継経由で取りに行く</li>
             <li>そのメディアをメモリ上に受け取り、ファイルとして保存する</li>
           </ul>
         </div>
         <div>
           <h3>できない</h3>
           <ul>
-            <li>YouTube の視聴ページと youtubei API（CORS で拒否）</li>
-            <li>Internet Archive の詳細ページ、埋め込みページ、動画ファイル（CORS で拒否）</li>
+            <li>中継の許可リストに無く、CORS も無いページ（Internet Archive の埋め込みページや動画ファイルなど）</li>
+            <li>中継が無いときの YouTube（ブラウザが CORS で拒否する）</li>
             <li>ffmpeg が必要な結合・再エンコード</li>
             <li>プレイリストの一括取得</li>
           </ul>
         </div>
       </div>
       <p class="hint">
-        拡張機能や、利用者が自分で動かす CORS 転送プロキシがあれば届く通信は増えます。このページにはそれらを同梱していません。
+        手元の python3 -m http.server には中継がありません。そのときはブラウザが直接通信します。
         詳細は README を見てください。
       </p>
     </section>
