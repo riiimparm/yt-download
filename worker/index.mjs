@@ -88,19 +88,34 @@ export async function handleProxy(request, options = {}) {
   }
 }
 
+export function withIsolation(response) {
+  const headers = new Headers(response.headers);
+  headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
-    if (pathname === "/proxy") return handleProxy(request);
-    if (!env?.ASSETS?.fetch) {
-      return new Response("ASSETS binding is missing", {
-        status: 500,
-        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
-      });
-    }
-    return env.ASSETS.fetch(request);
+    return withIsolation(await dispatch(request, env));
   },
 };
+
+async function dispatch(request, env) {
+  const { pathname } = new URL(request.url);
+  if (pathname === "/proxy") return handleProxy(request);
+  if (!env?.ASSETS?.fetch) {
+    return new Response("ASSETS binding is missing", {
+      status: 500,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
+  return env.ASSETS.fetch(request);
+}
 
 function normalizeHost(hostname) {
   let host = String(hostname || "").toLowerCase();

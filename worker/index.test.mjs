@@ -325,12 +325,20 @@ test("the worker serves /proxy itself and everything else from assets", async ()
   const page = await worker.fetch(new Request("https://worker.test/"), env);
   assert.equal(await page.text(), "page");
   assert.deepEqual(seen, ["/"]);
+  assertIsolated(page);
 
   const relay = await worker.fetch(new Request("https://worker.test/proxy"), env);
   assert.equal(relay.status, 400);
   assert.equal(relay.headers.get("x-yt-relay"), "1");
   assert.deepEqual(seen, ["/"]);
+  assertIsolated(relay);
 
   const missing = await worker.fetch(new Request("https://worker.test/"), {});
   assert.equal(missing.status, 500);
+  assertIsolated(missing);
 });
+
+function assertIsolated(response) {
+  assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
+  assert.equal(response.headers.get("cross-origin-embedder-policy"), "require-corp");
+}
