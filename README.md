@@ -241,6 +241,7 @@ https://developers.cloudflare.com/terraform/advanced-topics/remote-backend/
 - 同じリポジトリから出た pull request だけ `terraform plan` します。`github.event.pull_request.head.repo.full_name == github.repository` で、フォークの plan は走りません。`pull_request_target` は使いません。フォークの workflow から secrets は渡りません。
 - plan の出力は、その pull request にコメントします。
 - `main` への push だけ `terraform apply` します。静的アセットもこの apply に含まれます。`wrangler deploy` は呼びません。
+- `TF_STATE_BUCKET` が未設定のうちは plan も apply も走りません。資格情報を入れていないこのリポジトリで、pull request が毎回赤くならないようにしています。変数を入れれば走ります。バケット名の形を見るステップの検査は残してあります。
 - `concurrency` は `yt-download-infra` の一つです。`cancel-in-progress` は false なので、走っている apply を次の push が途中で殺しません。
 - 既定の `permissions` は `contents: read` です。plan のジョブだけ、コメントのために `pull-requests: write` を足しています。
 

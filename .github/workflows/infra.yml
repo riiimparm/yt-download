@@ -40,7 +40,7 @@ jobs:
   plan:
     name: plan
     needs: validate
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.TF_STATE_BUCKET != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -144,7 +144,7 @@ jobs:
   apply:
     name: apply
     needs: validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.TF_STATE_BUCKET != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
