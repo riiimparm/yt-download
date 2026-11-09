@@ -1,0 +1,220 @@
+:root {
+  color-scheme: light;
+  --paper: #fff;
+  --ink: #000;
+  --quiet: #3a3a3a;
+  --track: #e8e8e8;
+  --hatch: #c8c8c8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 16px/1.6 "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+}
+
+main {
+  max-width: 44rem;
+  margin: 0;
+  padding: 2.75rem 1.4rem 4rem;
+}
+
+h1 {
+  margin: 0 0 1.35rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 8px solid var(--ink);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Yu Mincho", "Hiragino Mincho ProN", serif;
+  font-weight: 400;
+  font-size: clamp(3.4rem, 11vw, 6.4rem);
+  line-height: 0.82;
+  letter-spacing: -0.045em;
+}
+
+.slot {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--ink);
+}
+
+.slot input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0.85rem 0.75rem;
+  background: var(--paper);
+  color: var(--ink);
+  font: 1rem/1.4 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.slot input::placeholder { color: #595959; }
+
+.slot input:disabled {
+  opacity: 1;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--paper) 0 6px,
+    var(--hatch) 6px 7px
+  );
+}
+
+#run {
+  border: 0;
+  border-left: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 0 1.15rem;
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 1rem/1 "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  cursor: pointer;
+}
+
+#run:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--paper) 0 5px,
+    var(--hatch) 5px 6px
+  );
+}
+
+.formats {
+  display: flex;
+  width: max-content;
+  margin-top: 0.75rem;
+  border: 1px solid var(--ink);
+}
+
+.formats label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+}
+
+.formats label + label { border-left: 1px solid var(--ink); }
+
+.formats input {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin: 0;
+  accent-color: currentColor;
+}
+
+.formats label:has(:checked) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.formats label:has(:disabled) { cursor: not-allowed; }
+
+input:focus-visible,
+#run:focus-visible,
+#save:focus-visible,
+.formats label:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+#progress { margin-top: 0.9rem; }
+
+.track {
+  height: 0.7rem;
+  background: var(--track);
+  border: 1px solid var(--ink);
+  overflow: hidden;
+}
+
+#bar {
+  height: 100%;
+  width: 35%;
+  background: var(--ink);
+  animation: slide 1.4s linear infinite;
+}
+
+@keyframes slide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #bar {
+    animation: none;
+    width: 100%;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--ink) 0 8px,
+      var(--paper) 8px 16px
+    );
+  }
+}
+
+#checkpoints {
+  list-style: none;
+  margin: 1.2rem 0 0;
+  padding: 0;
+}
+
+#checkpoints:empty { margin: 0; }
+
+#checkpoints li {
+  margin: 0;
+  padding: 0.28rem 0 0.28rem 0.75rem;
+  border-left: 3px solid var(--ink);
+}
+
+#checkpoints li[data-state="fail"] {
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--paper) 0 6px,
+    var(--hatch) 6px 7px
+  );
+}
+
+#save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 1rem;
+  margin: 1.15rem 0 0;
+}
+
+#save-row[hidden] { display: none; }
+
+#save {
+  display: inline-block;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.65rem 0.9rem;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+#save-name {
+  color: var(--quiet);
+  font: 0.92rem/1.4 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  main { padding: 1.5rem 0.9rem 3rem; }
+  h1 { font-size: 3.15rem; }
+  .slot { flex-direction: column; }
+  #run {
+    border-left: 0;
+    border-top: 1px solid var(--ink);
+    padding: 0.8rem;
+  }
+}

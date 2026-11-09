@@ -1,0 +1,13 @@
+name = "yt-download"
+main = "worker/index.mjs"
+compatibility_date = "2026-11-08"
+workers_dev = true
+
+# Local preview and `wrangler deploy --dry-run` only.
+# Production publishes this same Worker from Terraform, which uploads the
+# asset directory itself. Do not also `wrangler deploy` that Worker.
+[assets]
+directory = "./dist/assets"
+binding = "ASSETS"
+# Every request hits the Worker so both the page and /proxy get COOP and COEP.
+run_worker_first = true
