@@ -42,6 +42,12 @@ test("mp4 pairs a video-only file with an audio-only file", () => {
   ]);
 });
 
+test("a direct file with no declared codecs is still one input", () => {
+  const direct = { format_id: "0", ext: "webm", vcodec: "none", acodec: "none", filesize: 10 };
+  assert.deepEqual(chooseFormats([direct], "mp4"), [{ formatId: "0", kind: "av", ext: "webm" }]);
+  assert.deepEqual(chooseFormats([direct], "mp3"), [{ formatId: "0", kind: "av", ext: "webm" }]);
+});
+
 test("mp4 is not planned from video with no audio", () => {
   assert.deepEqual(chooseFormats([video], "mp4"), []);
 });

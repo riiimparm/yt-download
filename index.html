@@ -3,26 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ブラウザ内 yt-dlp</title>
+  <title>yt-download</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Antique&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main>
-    <header>
-      <h1>ブラウザ内で yt-dlp を実行</h1>
-      <p class="lead">
-        yt-dlp は WebAssembly 上の Python（Pyodide）で動きます。
-        このオリジンに中継（/proxy）があるとき、許可した YouTube 系の宛先だけをそこへ渡します。
-        中継が無い静的配信では、ブラウザが相手へ直接通信します。直接通信では、相手が CORS を許可していない応答は読めません。
-      </p>
-    </header>
-
-    <section class="panel" aria-labelledby="run-heading">
-      <h2 id="run-heading">実行</h2>
-      <form id="form">
-        <label for="url">動画またはファイルの URL</label>
+    <h1>yt-download</h1>
+    <form id="form">
+      <div class="slot">
         <input
           id="url"
           name="url"
@@ -30,76 +19,24 @@
           required
           autocomplete="off"
           spellcheck="false"
-          placeholder="https://example.com/video.webm"
+          placeholder="https://"
+          aria-label="URL"
         />
-        <p id="normalized" class="normalized" hidden>
-          <span class="normalized-label">処理する URL</span>
-          <code id="normalized-url"></code>
-          <span id="normalized-note" class="hint" hidden>単体の動画 URL に揃えました。中継が無いので、YouTube の取得は CORS のため失敗します。</span>
-        </p>
-        <div class="actions">
-          <button type="submit" id="run">実行</button>
-          <button type="button" id="sample">動作確認用の URL を入れる</button>
-        </div>
-      </form>
-      <p class="hint">
-        動作確認用は MDN の CC0 動画（直接の webm）です。CORS が開いているので、抽出・ダウンロード・保存まで通ります。
-        初回は Pyodide と yt-dlp の読み込みに時間がかかります。
-      </p>
-
-      <p id="status" role="status">URL を入れて実行してください。</p>
-      <div id="progress" hidden>
-        <div class="track" aria-hidden="true"><div id="bar"></div></div>
-        <p id="progress-text"></p>
+        <button type="submit" id="run">実行</button>
       </div>
-
-      <div id="error" role="alert" hidden></div>
-
-      <section id="result" hidden aria-live="polite">
-        <h3>保存できるファイル</h3>
-        <dl>
-          <div><dt>タイトル</dt><dd id="meta-title"></dd></div>
-          <div><dt>抽出器</dt><dd id="meta-extractor"></dd></div>
-          <div><dt>ファイル</dt><dd id="meta-file"></dd></div>
-          <div><dt>サイズ</dt><dd id="meta-size"></dd></div>
-        </dl>
-        <button type="button" id="save">ファイルを保存</button>
-        <p id="extra-files" class="hint" hidden></p>
-      </section>
-
-      <details>
-        <summary>ログ</summary>
-        <pre id="log"></pre>
-      </details>
-    </section>
-
-    <section class="limits" aria-labelledby="limits-heading">
-      <h2 id="limits-heading">実測した範囲</h2>
-      <div class="cols">
-        <div>
-          <h3>できる</h3>
-          <ul>
-            <li>ブラウザ内で yt-dlp 2026.10.26 を起動する</li>
-            <li>CORS を許可している URL から情報を抽出する</li>
-            <li>Workers で配信しているとき、許可した YouTube 系ホストを同一オリジンの中継経由で取りに行く</li>
-            <li>そのメディアをメモリ上に受け取り、ファイルとして保存する</li>
-          </ul>
-        </div>
-        <div>
-          <h3>できない</h3>
-          <ul>
-            <li>中継の許可リストに無く、CORS も無いページ（Internet Archive の埋め込みページや動画ファイルなど）</li>
-            <li>中継が無いときの YouTube（ブラウザが CORS で拒否する）</li>
-            <li>ffmpeg が必要な結合・再エンコード</li>
-            <li>プレイリストの一括取得</li>
-          </ul>
-        </div>
+      <div class="formats" role="radiogroup" aria-label="形式">
+        <label><input type="radio" name="format" value="mp4" checked />mp4</label>
+        <label><input type="radio" name="format" value="mp3" />mp3</label>
       </div>
-      <p class="hint">
-        手元の python3 -m http.server には中継がありません。そのときはブラウザが直接通信します。
-        詳細は README を見てください。
-      </p>
-    </section>
+    </form>
+    <div id="progress" hidden>
+      <div class="track" aria-hidden="true"><div id="bar"></div></div>
+    </div>
+    <ol id="checkpoints" aria-live="polite"></ol>
+    <p id="save-row" hidden>
+      <a id="save" download>保存</a>
+      <span id="save-name"></span>
+    </p>
   </main>
   <script src="app.js" type="module"></script>
 </body>

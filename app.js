@@ -1,144 +1,79 @@
+import { checkpointItems } from "./checkpoints.mjs";
+import { chooseFormats, downloadName, ffmpegArgs, outputName } from "./convert-plan.mjs";
 import { normalizeUrl } from "./normalize-url.mjs";
 import { createRelayFetch, probeRelay, wrapXMLHttpRequest } from "./relay-client.mjs";
 
 const PYODIDE_VERSION = "314.0.7";
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
-const SAMPLE_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm";
+const vendor = new URL("./vendor/", import.meta.url);
 
 const form = document.querySelector("#form");
 const urlInput = document.querySelector("#url");
 const runButton = document.querySelector("#run");
-const sampleButton = document.querySelector("#sample");
-const statusEl = document.querySelector("#status");
-const progressWrap = document.querySelector("#progress");
+const formatInputs = form.querySelectorAll('input[name="format"]');
+const progress = document.querySelector("#progress");
 const bar = document.querySelector("#bar");
-const progressText = document.querySelector("#progress-text");
-const errorEl = document.querySelector("#error");
-const resultEl = document.querySelector("#result");
-const saveButton = document.querySelector("#save");
-const logEl = document.querySelector("#log");
-const normalizedEl = document.querySelector("#normalized");
-const normalizedUrlEl = document.querySelector("#normalized-url");
-const normalizedNoteEl = document.querySelector("#normalized-note");
+const checkpoints = document.querySelector("#checkpoints");
+const saveRow = document.querySelector("#save-row");
+const saveLink = document.querySelector("#save");
+const saveName = document.querySelector("#save-name");
 
-let pyodidePromise = null;
+let runtimePromise = null;
 let saveUrl = null;
 let busy = false;
-let relayOn = false;
 let relayReady = null;
-
-sampleButton.addEventListener("click", () => {
-  urlInput.value = SAMPLE_URL;
-  refreshNormalized();
-  urlInput.focus();
-});
-
-urlInput.addEventListener("input", refreshNormalized);
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const raw = urlInput.value.trim();
   if (!raw || busy) return;
-  refreshNormalized();
-  run(normalizeUrl(raw), raw);
+  const format = form.elements.format.value === "mp3" ? "mp3" : "mp4";
+  run(normalizeUrl(raw), format);
 });
 
-saveButton.addEventListener("click", () => {
-  if (!saveUrl) return;
-  const link = document.createElement("a");
-  link.href = saveUrl;
-  link.download = saveButton.dataset.filename || "download";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-});
+globalThis.reportLog = (line) => {
+  console.log(line);
+};
+
+globalThis.reportProgress = (status, done, total) => {
+  console.log(status, done, total);
+};
 
 function setBusy(value) {
   busy = value;
   runButton.disabled = value;
-  sampleButton.disabled = value;
   urlInput.disabled = value;
-  runButton.textContent = value ? "実行中" : "実行";
+  for (const input of formatInputs) input.disabled = value;
+  progress.hidden = !value;
+  if (value) bar.getAnimations?.().forEach((animation) => animation.play());
 }
 
-function setStatus(text) {
-  statusEl.textContent = text;
-}
-
-function appendLog(line) {
-  const text = String(line ?? "").trimEnd();
-  if (!text) return;
-  logEl.textContent += (logEl.textContent ? "\n" : "") + text;
-  logEl.scrollTop = logEl.scrollHeight;
-}
-
-function hideError() {
-  errorEl.hidden = true;
-  errorEl.textContent = "";
-}
-
-function showError(summary, detail) {
-  const cors = /Failed to fetch|CORS|Access-Control|net::ERR_FAILED/i.test(`${summary}\n${detail || ""}`);
-  const head = !cors
-    ? "yt-dlp が完了しませんでした。"
-    : relayOn
-      ? "通信に失敗しました。中継か、その先のサーバが応答を返せていません。"
-      : "ブラウザが通信を拒否しました。相手が Access-Control-Allow-Origin を返していないため、このページからは応答を読めません。yt-dlp は起動していますが、その URL の中身は取得できません。";
-  errorEl.hidden = false;
-  errorEl.textContent = detail ? `${head}\n${summary}` : `${head}\n${summary}`;
-}
-
-function resetResult() {
-  resultEl.hidden = true;
-  if (saveUrl) {
-    URL.revokeObjectURL(saveUrl);
-    saveUrl = null;
+function showSteps(status) {
+  checkpoints.replaceChildren();
+  for (const item of checkpointItems(status)) {
+    const line = document.createElement("li");
+    line.dataset.state = item.state;
+    line.textContent = `${item.step} ${item.state === "pass" ? "pass" : "失敗"}`;
+    checkpoints.append(line);
   }
-  saveButton.dataset.filename = "";
-  document.querySelector("#extra-files").hidden = true;
 }
 
-function setProgress(done, total) {
-  progressWrap.hidden = false;
-  const known = Number(total) > 0;
-  if (!known) {
-    bar.classList.add("indeterminate");
-    bar.style.width = "";
-    progressText.textContent = "通信中です。バイト数は応答が届いてから分かります。";
-    return;
-  }
-  bar.classList.remove("indeterminate");
-  const ratio = Math.max(0, Math.min(1, Number(done) / Number(total)));
-  bar.style.width = `${Math.round(ratio * 100)}%`;
-  progressText.textContent = `${formatBytes(done)} / ${formatBytes(total)}`;
+function resetSave() {
+  if (saveUrl) URL.revokeObjectURL(saveUrl);
+  saveUrl = null;
+  saveLink.removeAttribute("href");
+  saveLink.download = "";
+  saveName.textContent = "";
+  saveRow.hidden = true;
 }
 
-function formatBytes(value) {
-  const n = Number(value) || 0;
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-globalThis.reportLog = (line) => {
-  appendLog(line);
-};
-
-globalThis.reportProgress = (status, done, total) => {
-  if (status === "downloading" || status === "finished") {
-    setStatus(status === "finished" ? "ダウンロードが完了しました。" : "ダウンロードしています。");
-    setProgress(done, total);
-  }
-};
-
-async function loadRuntime() {
-  if (!pyodidePromise) {
-    pyodidePromise = startRuntime().catch((error) => {
-      pyodidePromise = null;
-      throw error;
-    });
-  }
-  return pyodidePromise;
+function offerSave(bytes, filename, type) {
+  const blob = new Blob([bytes], { type });
+  saveUrl = URL.createObjectURL(blob);
+  saveLink.href = saveUrl;
+  saveLink.download = filename;
+  saveName.textContent = filename;
+  saveRow.hidden = false;
 }
 
 function ensureRelay() {
@@ -152,8 +87,6 @@ function ensureRelay() {
       if (typeof globalThis.XMLHttpRequest === "function") {
         globalThis.XMLHttpRequest = wrapXMLHttpRequest(globalThis.XMLHttpRequest, origin);
       }
-      relayOn = true;
-      refreshNormalized();
       return true;
     })();
   }
@@ -162,106 +95,153 @@ function ensureRelay() {
 
 ensureRelay();
 
+function loadRuntime() {
+  if (!runtimePromise) {
+    runtimePromise = startRuntime().catch((error) => {
+      runtimePromise = null;
+      throw error;
+    });
+  }
+  return runtimePromise;
+}
+
 async function startRuntime() {
   await ensureRelay();
-  setStatus("Pyodide を読み込んでいます。");
-  appendLog(`Pyodide ${PYODIDE_VERSION} を読み込みます。`);
   await loadScript(`${PYODIDE_BASE}pyodide.js`);
   const pyodide = await globalThis.loadPyodide({
     indexURL: PYODIDE_BASE,
-    stdout: (line) => appendLog(line),
-    stderr: (line) => appendLog(line),
+    stdout: (line) => console.log(line),
+    stderr: (line) => console.error(line),
   });
-  setStatus("requests を読み込んでいます。");
   await pyodide.loadPackage("requests");
-  setStatus("yt-dlp をインストールしています。");
-  appendLog("micropip で yt-dlp をインストールします。");
   await pyodide.loadPackage("micropip");
   const micropip = pyodide.pyimport("micropip");
   await micropip.install("yt-dlp==2026.10.26");
   await pyodide.runPythonAsync(RUNTIME_SOURCE);
-  const version = pyodide.runPython("import yt_dlp; yt_dlp.version.__version__");
-  appendLog(`yt-dlp ${version} を読み込みました。`);
-  return pyodide;
+  const ffmpegModule = await import(new URL("ffmpeg/index.js", vendor).href);
+  const ffmpeg = new ffmpegModule.FFmpeg();
+  ffmpeg.on("log", ({ message }) => console.log(message));
+  const coreBase = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/";
+  await ffmpeg.load({
+    coreURL: await blobUrl(`${coreBase}ffmpeg-core.js`, "text/javascript"),
+    wasmURL: await blobUrl(`${coreBase}ffmpeg-core.wasm`, "application/wasm"),
+  });
+  return { pyodide, ffmpeg };
+}
+
+async function blobUrl(url, type) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`fetch failed: ${response.status} ${url}`);
+  const blob = new Blob([await response.arrayBuffer()], { type });
+  return URL.createObjectURL(blob);
 }
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = src;
+    script.crossOrigin = "anonymous";
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`スクリプトを読み込めません: ${src}`));
+    script.onerror = () => reject(new Error(`script failed: ${src}`));
     document.head.appendChild(script);
   });
 }
 
-function refreshNormalized() {
-  const raw = urlInput.value.trim();
-  if (!raw) {
-    normalizedEl.hidden = true;
-    return;
-  }
-  const next = normalizeUrl(raw);
-  normalizedEl.hidden = false;
-  normalizedUrlEl.textContent = next;
-  normalizedNoteEl.textContent = relayOn
-    ? "単体の動画 URL に揃えました。YouTube 宛の通信はこのオリジンの中継を通ります。中継できても、YouTube 側が拒否すれば失敗します。"
-    : "単体の動画 URL に揃えました。中継が無いので、YouTube の取得は CORS のため失敗します。";
-  normalizedNoteEl.hidden = next === raw;
-}
-
-async function run(url, raw = url) {
+async function run(url, format) {
+  const status = {};
   setBusy(true);
-  hideError();
-  resetResult();
-  progressWrap.hidden = true;
-  bar.classList.remove("indeterminate");
-  bar.style.width = "0%";
-  if (raw !== url) appendLog(`入力を単体動画の URL に揃えました: ${url}`);
-  appendLog(`--- ${url}`);
+  resetSave();
+  showSteps(status);
   try {
-    const pyodide = await loadRuntime();
-    setStatus("yt-dlp で情報を抽出しています。");
-    setProgress(0, 0);
-    pyodide.globals.set("TARGET_URL", url);
-    const raw = await pyodide.runPythonAsync("run_download(TARGET_URL)");
-    const info = toPlain(raw);
-    if (!info || !info.path || !info.size) {
-      throw new Error("保存できるファイルが返りませんでした。");
+    let runtime;
+    try {
+      runtime = await loadRuntime();
+      status.読み込み = "pass";
+      showSteps(status);
+    } catch (error) {
+      fail(status, "読み込み", error);
+      return;
     }
-    const bytes = pyodide.FS.readFile(info.path);
-    if (!bytes || bytes.byteLength !== info.size) {
-      throw new Error(`読み出したサイズが一致しません（${bytes ? bytes.byteLength : 0} / ${info.size}）。`);
+
+    let extracted;
+    try {
+      extracted = await extract(runtime.pyodide, url);
+      if (!extracted.formats.length) throw new Error("no formats");
+      status.情報取得 = "pass";
+      showSteps(status);
+    } catch (error) {
+      fail(status, "情報取得", error);
+      return;
     }
-    const blob = new Blob([bytes], { type: "application/octet-stream" });
-    saveUrl = URL.createObjectURL(blob);
-    saveButton.dataset.filename = info.filename;
-    document.querySelector("#meta-title").textContent = info.title || "（なし）";
-    document.querySelector("#meta-extractor").textContent = info.extractor || "（なし）";
-    document.querySelector("#meta-file").textContent = info.filename;
-    document.querySelector("#meta-size").textContent = formatBytes(info.size);
-    const extra = document.querySelector("#extra-files");
-    if (info.file_count > 1) {
-      extra.hidden = false;
-      extra.textContent = `${info.file_count} 個のファイルができました。いちばん大きい ${info.filename} だけ保存できます。結合はできません。`;
-    } else {
-      extra.hidden = true;
+
+    let media;
+    try {
+      const chosen = chooseFormats(extracted.formats, format);
+      if (!chosen.length) throw new Error("no matching format");
+      media = await fetchMedia(runtime.pyodide, url, chosen);
+      status.ダウンロード = "pass";
+      showSteps(status);
+    } catch (error) {
+      fail(status, "ダウンロード", error);
+      return;
     }
-    resultEl.hidden = false;
-    progressWrap.hidden = false;
-    setProgress(info.size, info.size);
-    setStatus("ファイルをメモリに読みました。保存ボタンで書き出せます。");
-    appendLog(`保存可能: ${info.filename} (${info.size} bytes)`);
-  } catch (error) {
-    const detail = errorText(error);
-    appendLog(detail);
-    const summary = shortError(detail);
-    showError(summary, detail);
-    setStatus("失敗しました。ファイルは保存できません。");
-    progressWrap.hidden = true;
+
+    try {
+      const bytes = await convert(runtime.ffmpeg, media, format);
+      status.変換 = "pass";
+      showSteps(status);
+      offerSave(
+        bytes,
+        downloadName(extracted.id || extracted.title, format),
+        format === "mp3" ? "audio/mpeg" : "video/mp4",
+      );
+    } catch (error) {
+      fail(status, "変換", error);
+    }
   } finally {
     setBusy(false);
   }
+}
+
+function fail(status, step, error) {
+  status[step] = "fail";
+  showSteps(status);
+  console.error(error);
+}
+
+async function extract(pyodide, url) {
+  pyodide.globals.set("TARGET_URL", url);
+  return toPlain(await pyodide.runPythonAsync("run_extract(TARGET_URL)"));
+}
+
+async function fetchMedia(pyodide, url, chosen) {
+  pyodide.globals.set("TARGET_URL", url);
+  pyodide.globals.set("TARGET_SPEC", JSON.stringify(chosen.map((item) => ({
+    format_id: item.formatId,
+    kind: item.kind,
+  }))));
+  const fetched = toPlain(await pyodide.runPythonAsync("run_fetch(TARGET_URL, TARGET_SPEC)"));
+  return (fetched.files || []).map((file) => {
+    const read = pyodide.FS.readFile(file.path);
+    return {
+      name: `${file.kind}.${file.ext || "bin"}`,
+      kind: file.kind,
+      ext: file.ext || "",
+      bytes: new Uint8Array(read),
+    };
+  });
+}
+
+async function convert(ffmpeg, files, format) {
+  for (const file of files) await ffmpeg.writeFile(file.name, file.bytes);
+  let code = await ffmpeg.exec(ffmpegArgs(files, format), 300000);
+  if (code !== 0 && ffmpegArgs(files, format).includes("copy")) {
+    code = await ffmpeg.exec(ffmpegArgs(files, format, "transcode"), 300000);
+  }
+  if (code !== 0) throw new Error(`ffmpeg exit ${code}`);
+  const data = await ffmpeg.readFile(outputName(format));
+  const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(String(data));
+  return new Uint8Array(bytes);
 }
 
 function toPlain(value) {
@@ -271,24 +251,11 @@ function toPlain(value) {
   return value;
 }
 
-function errorText(error) {
-  if (!error) return "不明なエラー";
-  if (typeof error === "string") return error;
-  return error.message || String(error);
-}
-
-function shortError(text) {
-  const lines = String(text).split("\n").map((line) => line.trim()).filter(Boolean);
-  const picked = [...lines].reverse().find((line) =>
-    line.includes("ERROR:") || line.startsWith("DownloadError") || line.startsWith("ExtractorError") || line.includes("Failed to fetch")
-  );
-  return picked || lines.at(-1) || text;
-}
-
 const RUNTIME_SOURCE = `
+import json
 import os
 import yt_dlp
-from js import reportLog, reportProgress
+from js import reportLog
 
 DOWNLOAD_DIR = "/downloads"
 
@@ -308,26 +275,14 @@ class _Log:
     def error(self, msg):
         reportLog("error: " + str(msg))
 
-def _progress(data):
-    status = data.get("status") or ""
-    done = int(data.get("downloaded_bytes") or 0)
-    total = int(data.get("total_bytes") or data.get("total_bytes_estimate") or 0)
-    reportProgress(status, done, total)
-
-def run_download(url):
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    for name in os.listdir(DOWNLOAD_DIR):
-        path = os.path.join(DOWNLOAD_DIR, name)
-        if os.path.isfile(path):
-            os.remove(path)
-
+def _options(outtmpl, format_id):
     options = {
         "quiet": True,
         "no_warnings": False,
         "noprogress": True,
         "noplaylist": True,
         "restrictfilenames": True,
-        "outtmpl": DOWNLOAD_DIR + "/%(id)s.%(ext)s",
+        "outtmpl": outtmpl,
         "nopart": True,
         "continuedl": False,
         "overwrites": True,
@@ -336,31 +291,71 @@ def run_download(url):
         "extractor_retries": 0,
         "socket_timeout": 45,
         "logger": _Log(),
-        "progress_hooks": [_progress],
     }
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url, download=True) or {}
+    if format_id:
+        options["format"] = format_id
+    return options
 
-    files = []
+def _formats(info):
+    found = info.get("formats") or []
+    if found:
+        return found
+    if info.get("url"):
+        return [info]
+    return []
+
+def run_extract(url):
+    with yt_dlp.YoutubeDL(_options(DOWNLOAD_DIR + "/%(id)s.%(ext)s", "")) as ydl:
+        info = ydl.extract_info(url, download=False) or {}
+    kind = info.get("_type") or "video"
+    if kind in ("playlist", "multi_video"):
+        raise yt_dlp.utils.DownloadError("playlist")
+    formats = []
+    for item in _formats(info):
+        formats.append({
+            "format_id": str(item.get("format_id") or ""),
+            "ext": item.get("ext") or "",
+            "vcodec": item.get("vcodec") or "none",
+            "acodec": item.get("acodec") or "none",
+            "height": int(item.get("height") or 0),
+            "abr": float(item.get("abr") or 0),
+            "tbr": float(item.get("tbr") or 0),
+            "filesize": int(item.get("filesize") or item.get("filesize_approx") or 0),
+        })
+    return {
+        "id": str(info.get("id") or ""),
+        "title": info.get("title") or "",
+        "formats": formats,
+    }
+
+def run_fetch(url, spec_json):
+    spec = json.loads(spec_json)
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     for name in os.listdir(DOWNLOAD_DIR):
         path = os.path.join(DOWNLOAD_DIR, name)
-        if os.path.isfile(path) and os.path.getsize(path) > 0 and not name.endswith(".part"):
-            files.append(path)
-    if not files:
-        kind = info.get("_type") or "video"
-        if kind in ("playlist", "multi_video"):
-            raise yt_dlp.utils.DownloadError("プレイリストは未対応です。単体の URL を指定してください。")
-        raise yt_dlp.utils.DownloadError("抽出は終わりましたが、保存できるファイルがありません。")
-    files.sort(key=os.path.getsize, reverse=True)
-    path = files[0]
-    return {
-        "path": path,
-        "filename": os.path.basename(path),
-        "size": os.path.getsize(path),
-        "title": info.get("title") or "",
-        "extractor": info.get("extractor") or "",
-        "id": str(info.get("id") or ""),
-        "ext": info.get("ext") or "",
-        "file_count": len(files),
-    }
+        if os.path.isfile(path):
+            os.remove(path)
+    files = []
+    for item in spec:
+        kind = str(item.get("kind") or "file")
+        outtmpl = DOWNLOAD_DIR + "/" + kind + ".%(ext)s"
+        with yt_dlp.YoutubeDL(_options(outtmpl, str(item.get("format_id") or ""))) as ydl:
+            ydl.download([url])
+        matches = []
+        for name in os.listdir(DOWNLOAD_DIR):
+            if not name.startswith(kind + ".") or name.endswith(".part"):
+                continue
+            path = os.path.join(DOWNLOAD_DIR, name)
+            if os.path.isfile(path) and os.path.getsize(path) > 0:
+                matches.append(path)
+        if not matches:
+            raise yt_dlp.utils.DownloadError("empty file")
+        path = matches[0]
+        files.append({
+            "path": path,
+            "kind": kind,
+            "ext": os.path.splitext(path)[1].lstrip("."),
+            "size": os.path.getsize(path),
+        })
+    return {"files": files}
 `;

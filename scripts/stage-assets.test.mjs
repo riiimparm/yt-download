@@ -9,14 +9,21 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("stage-assets copies only the files the page loads", () => {
   execFileSync("sh", ["scripts/stage-assets.sh"], { cwd: root });
-  assert.deepEqual(walk(path.join(root, "dist/assets")), [
+  const files = walk(path.join(root, "dist/assets"));
+  const required = [
     "app.js",
+    "checkpoints.mjs",
+    "convert-plan.mjs",
     "index.html",
     "normalize-url.mjs",
     "relay-client.mjs",
     "style.css",
     "worker/index.mjs",
-  ]);
+  ];
+  for (const name of required) assert.ok(files.includes(name), name);
+  for (const name of files) {
+    assert.ok(required.includes(name) || name.startsWith("vendor/"), name);
+  }
 });
 
 function walk(dir) {

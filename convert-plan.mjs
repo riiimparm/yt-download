@@ -13,8 +13,9 @@ export function chooseFormats(formats, target) {
   if (target === "mp3") {
     const pool = audios.length ? audios : progressive;
     const best = [...pool].sort(byAudio)[0];
-    if (!best) return [];
-    return [choice(best, audios.length ? "audio" : "av")];
+    if (best) return [choice(best, audios.length ? "audio" : "av")];
+    const only = [...list].filter((format) => !hasVideo(format) && !hasAudio(format)).sort(byAudio)[0];
+    return only ? [choice(only, "av")] : [];
   }
 
   if (progressive.length) {
@@ -27,6 +28,7 @@ export function chooseFormats(formats, target) {
       choice([...audios].sort(byAudio)[0], "audio"),
     ];
   }
+  if (list.length === 1 && !hasVideo(list[0]) && !hasAudio(list[0])) return [choice(list[0], "av")];
   return [];
 }
 

@@ -61,6 +61,9 @@ jobs:
         with:
           terraform_version: 1.17.1
 
+      - name: Fetch ffmpeg.wasm
+        run: scripts/fetch-ffmpeg.sh
+
       - name: Stage static assets
         run: scripts/stage-assets.sh
 
@@ -158,6 +161,9 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.17.1
+
+      - name: Fetch ffmpeg.wasm
+        run: scripts/fetch-ffmpeg.sh
 
       - name: Stage static assets
         run: scripts/stage-assets.sh
