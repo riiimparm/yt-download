@@ -1,0 +1,195 @@
+name: infra
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yt-download-infra
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: fmt and validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.1
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        working-directory: infra
+        run: terraform validate -no-color
+
+  plan:
+    name: plan
+    needs: validate
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.1
+
+      - name: Stage static assets
+        run: scripts/stage-assets.sh
+
+      - name: Write backend config
+        working-directory: infra
+        run: |
+          set -eu
+          case "$TF_STATE_BUCKET" in
+            "" | *[!a-z0-9-]*)
+              echo "TF_STATE_BUCKET must be a lowercase R2 bucket name" >&2
+              exit 1
+              ;;
+          esac
+          case "$CLOUDFLARE_ACCOUNT_ID" in
+            "" | *[!a-f0-9]*)
+              echo "CLOUDFLARE_ACCOUNT_ID must be hexadecimal" >&2
+              exit 1
+              ;;
+          esac
+          umask 077
+          cat > backend.hcl <<EOF
+          bucket = "${TF_STATE_BUCKET}"
+          endpoints = {
+            s3 = "https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          }
+          EOF
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init -input=false -backend-config=backend.hcl
+
+      - name: terraform plan
+        working-directory: infra
+        run: |
+          set -eu -o pipefail
+          terraform plan -input=false -no-color -out=tfplan | tee plan.txt
+
+      - name: Comment the plan on the pull request
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const marker = "<!-- tf-plan -->";
+            let text = "(terraform plan produced no output)";
+            if (fs.existsSync("infra/plan.txt")) {
+              text = fs.readFileSync("infra/plan.txt", "utf8");
+            }
+            if (text.length > 60000) {
+              text = text.slice(0, 60000) + "\n…(truncated)";
+            }
+            const body = marker + "\n### Terraform plan\n\n```\n" + text.replaceAll("```", "'''") + "\n```\n";
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body && comment.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  apply:
+    name: apply
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.1
+
+      - name: Stage static assets
+        run: scripts/stage-assets.sh
+
+      - name: Write backend config
+        working-directory: infra
+        run: |
+          set -eu
+          case "$TF_STATE_BUCKET" in
+            "" | *[!a-z0-9-]*)
+              echo "TF_STATE_BUCKET must be a lowercase R2 bucket name" >&2
+              exit 1
+              ;;
+          esac
+          case "$CLOUDFLARE_ACCOUNT_ID" in
+            "" | *[!a-f0-9]*)
+              echo "CLOUDFLARE_ACCOUNT_ID must be hexadecimal" >&2
+              exit 1
+              ;;
+          esac
+          umask 077
+          cat > backend.hcl <<EOF
+          bucket = "${TF_STATE_BUCKET}"
+          endpoints = {
+            s3 = "https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          }
+          EOF
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init -input=false -backend-config=backend.hcl
+
+      - name: terraform apply
+        working-directory: infra
+        run: terraform apply -input=false -auto-approve
