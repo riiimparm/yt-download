@@ -203,7 +203,13 @@ https://developers.cloudflare.com/workers/authorization/workers/
 
 `hostname` を空にしておく間は、Zone の Workers Routes Write は要りません。同じ文書が、ルートを変えないデプロイに Workers Routes Write は不要だと書いています。
 
-`hostname` を入れると、カスタムドメインを作るので、そのゾーンに Zone の Workers Routes Write が要ります。同じ文書は、ルートとカスタムドメインの変更には、影響するゾーンごとに絞ったこの権限が要る、と書いています。DNS の権限には触れていません。レコードはカスタムドメインの作成が作ります。プロバイダの `cloudflare_workers_custom_domain` の Accepted Permissions も `Workers Scripts Read` と `Workers Scripts Write` だけです。apply が DNS で落ちたら、そのゾーンの DNS Write を足します。
+`hostname` を入れると、カスタムドメインを作るので、そのゾーンに Zone の Workers Routes Write が要ります。同じ文書は、ルートとカスタムドメインの変更には、影響するゾーンごとに絞ったこの権限が要る、と書いています。DNS の権限は付けません。レコードと証明書は、カスタムドメインの作成の中で Cloudflare が作ります。
+
+`/accounts/{account_id}/workers/domains` の Accepted Permissions は `Workers Scripts Write` だけです。プロバイダの `cloudflare_workers_custom_domain` は `Workers Scripts Read` と `Workers Scripts Write` です。Cloudflare のトークンテンプレート `Edit Cloudflare Workers` も、Zone の Workers Routes Write と Account 側の Workers 権限などで、DNS は入っていません。DNS は別のテンプレートです。Zone の DNS Write が要るのは、レコードを自分で足したり消したりする場合です。この Terraform は `cloudflare_dns_record` を持ちません。
+
+https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/update/
+
+https://developers.cloudflare.com/fundamentals/api/reference/template/
 
 https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/workers_custom_domain
 
