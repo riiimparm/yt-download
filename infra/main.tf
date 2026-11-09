@@ -26,7 +26,7 @@ resource "cloudflare_worker_version" "app" {
     directory = "${path.module}/../dist/assets"
     config = {
       not_found_handling = "none"
-      run_worker_first   = ["/proxy"]
+      run_worker_first   = true
     }
   }
 

@@ -12,18 +12,17 @@ yt-dlp を、このブラウザの中で動かす静的ページです。配信�
 `file://` では動きません。モジュールと Pyodide を HTTP で配信してください。
 
 ```bash
+scripts/fetch-ffmpeg.sh
 python3 -m http.server 8766
 ```
 
-ブラウザで `http://127.0.0.1:8766/` を開きます。このオリジンには `/proxy` が無いので、ページは `fetch` を包みません。YouTube はこれまでどおり CORS で失敗します。MDN の webm は相手が CORS を開けているので、中継なしで保存まで通ります。
+ブラウザで `http://127.0.0.1:8766/` を開きます。このオリジンには `/proxy` が無いので、ページは `fetch` を包みません。YouTube はこれまでどおり CORS で失敗します。MDN の webm は相手が CORS を開けているので、中継なしで mp3 と mp4 の保存まで通ります。このサーバは COOP / COEP を出さないので、`crossOriginIsolated` は false です。変換は単一スレッド版なので、そのままで動きます。
 
-1. URL を入れて「実行」を押す。
-2. 初回は jsDelivr から Pyodide 314.0.7、PyPI から `yt-dlp==2026.10.26` を読み込む。
-3. ファイルがメモリに載ったときだけ「ファイルを保存」が出る。押すとブラウザのダウンロードになる。
+1. URL を入れ、mp4 か mp3 を選んで「実行」を押す。
+2. 画面にはチェックポイントだけが出ます。`読み込み pass`、`情報取得 pass`、`ダウンロード pass`、`変換 pass`。失敗した段は `失敗` と出ます。スタックトレースは画面に出さず、ブラウザのコンソールだけです。
+3. 変換まで通ったときだけ「保存」が出ます。押すとブラウザのダウンロードになります。
 
-「動作確認用の URL を入れる」は、下の検証で保存まで通った MDN の CC0 動画です。成功のふりはしません。
-
-YouTube の視聴 URL、Shorts、`youtu.be` は、実行前に単体動画の `https://youtu.be/動画ID` へ揃えます。`list`、`start_radio`、`si` などのパラメータは捨てます。`t` と `start` が秒だけのときだけ `?t=` として残します。それ以外の URL はそのままです。入力欄の下に、実際に渡す URL を出します。この揃えは再生リストとして取りに行くのを避けるだけです。CORS を越えるのは中継があるときだけです。
+YouTube の視聴 URL、Shorts、`youtu.be` は、実行前に単体動画の `https://youtu.be/動画ID` へ揃えます。`list`、`start_radio`、`si` などのパラメータは捨てます。`t` と `start` が秒だけのときだけ `?t=` として残します。それ以外の URL はそのままです。画面には揃え後の URL を出しません。この揃えは再生リストとして取りに行くのを避けるだけです。CORS を越えるのは中継があるときだけです。
 
 Workers で開いているときは、ページが先に `GET /proxy` を見ます。応答ヘッダ `x-yt-relay: 1` があるときだけ `fetch` と `XMLHttpRequest` を包み、許可したホストへの通信を `/proxy?url=` へ変えます。ヘッダが無い（静的サーバの 404 など）ときは包みません。
 
@@ -94,7 +93,7 @@ https://developers.cloudflare.com/changelog/post/2025-10-09-assets-terraform/
 
 そのため main への適用に `wrangler deploy` は入れていません。Terraform と Wrangler の両方で同じ Worker を更新すると、後から走った方がバージョンを上書きします。
 
-`wrangler.toml` は手元の `wrangler dev` と `wrangler deploy --dry-run` 用です。Worker 名、`ASSETS` バインディング、`run_worker_first = ["/proxy"]` は Terraform と揃えてあります。`/proxy` を先に Worker へ渡すのは、同名の静的ファイルができても中継が隠れないようにするためです。
+`wrangler.toml` は手元の `wrangler dev` と `wrangler deploy --dry-run` 用です。Worker 名、`ASSETS` バインディング、`run_worker_first = true` は Terraform と揃えてあります。静的ファイルも中継も一度 Worker を通ります。Worker が応答へ `Cross-Origin-Opener-Policy: same-origin` と `Cross-Origin-Embedder-Policy: require-corp` を付け、`/proxy` は静的ファイルに隠れません。
 
 https://developers.cloudflare.com/workers/static-assets/binding/
 
@@ -151,6 +150,7 @@ GitHub Actions の `concurrency` グループ `yt-download-infra` は、この�
 値はコミットしません。`infra/terraform.tfvars.example` と `infra/backend.hcl.example` をコピーして作ります。
 
 ```bash
+scripts/fetch-ffmpeg.sh
 scripts/stage-assets.sh
 cd infra
 cp terraform.tfvars.example terraform.tfvars
@@ -173,7 +173,7 @@ terraform -chdir=infra init -backend=false -input=false
 terraform -chdir=infra validate
 ```
 
-手元の Worker プレビューは、`scripts/stage-assets.sh` のあと `npx wrangler dev` です。`npx wrangler deploy --dry-run` は送信せずに、上げるファイルを出します。本番への `wrangler deploy` は、上のとおり Terraform と衝突するので使いません。
+手元の Worker プレビューは、`scripts/fetch-ffmpeg.sh` と `scripts/stage-assets.sh` のあと `npx wrangler dev` です。`npx wrangler deploy --dry-run` は送信せずに、上げるファイルを出します。本番への `wrangler deploy` は、上のとおり Terraform と衝突するので使いません。
 
 `wrangler dev` の上流 `fetch` は、そのマシンの出口 IP から出ます。Cloudflare のエッジ IP ではありません。
 
@@ -254,4 +254,25 @@ gh variable set TF_STATE_BUCKET --repo riiimparm/yt-download
 
 ブラウザ拡張のホスト権限は実装していません。yt-dlp の `--proxy`（HTTP プロキシ）も使いません。ブラウザの `fetch` はそれを通れないため、同じオリジンの URL 中継にしています。
 
-ffmpeg はありません。映像と音声の結合や再エンコードはしません。プレイリストの一括取得もしません。応答はブラウザのメモリに載せてから保存します。
+プレイリストの一括取得はしません。応答はブラウザのメモリに載せてから保存します。
+
+## 変換
+
+mp3 への変換と、映像と音声を一つの mp4 にまとめる処理は、ブラウザの中で行います。Worker では変換しません。
+
+使うコアは単一スレッドの `@ffmpeg/core` 0.12.10 です。npm の `license` は `GPL-2.0-or-later` です。配布 wasm には `libmp3lame` と `libx264` と `--enable-gpl` の文字列が入っています。libx264 は GPL、libmp3lame は LGPL なので、この wasm は GPL です。ラッパの `@ffmpeg/ffmpeg` 0.12.15 と、FFmpeg 本体のライセンス説明は次です。
+
+- https://www.npmjs.com/package/@ffmpeg/core/v/0.12.10
+- https://github.com/ffmpegwasm/ffmpeg.wasm/blob/main/Dockerfile
+- https://github.com/ffmpegwasm/ffmpeg.wasm/blob/main/apps/website/docs/faq.md
+- https://www.ffmpeg.org/legal.html
+
+ラッパの ESM（`@ffmpeg/ffmpeg@0.12.15`）は `scripts/fetch-ffmpeg.sh` が npm の tarball から取り、gitignore した `vendor/ffmpeg/` に置きます。`scripts/stage-assets.sh` がそれを `dist/assets/vendor/ffmpeg/` にコピーします。ページは同じオリジンのその `index.js` を読み、そこから同じオリジンの `worker.js` を起動します。
+
+コアの `ffmpeg-core.js` と `ffmpeg-core.wasm`（約 31 MiB）は jsDelivr から取り、blob URL にしてワーカーへ渡します。Workers の静的アセットは 1 ファイル 25 MiB までで、この wasm は載りません。`wrangler dev` は `dist/assets` に置くと `Asset too large` で止まりました。jsDelivr は `Access-Control-Allow-Origin: *` と `Cross-Origin-Resource-Policy: cross-origin` を返します。それでも Chrome は、COEP `require-corp` のページから jsDelivr の `worker.js` を `new Worker` すると `SecurityError` で拒みました。ワーカー本体を同じオリジンにし、コアだけを CORS で読んで blob にすると、この拒否を避けられます。Pyodide のスクリプトは jsDelivr のままです。`crossorigin="anonymous"` を付け、応答の CORS と CORP で通ります。
+
+マルチスレッド版 `@ffmpeg/core-mt` は SharedArrayBuffer が要り、ページが cross-origin isolated である必要があります。Worker は静的ファイルと中継の両方に COOP と COEP を付けます。手元の `python3 -m http.server` はそのヘッダを出せません。単一スレッド版は SharedArrayBuffer を使わないので、どちらの配信でも変換できます。`python3 -m http.server` で変換するときも、先に `scripts/fetch-ffmpeg.sh` を実行します。
+
+Google Fonts は外しました。スタイルシートとフォントファイルは別オリジンの no-cors になり、`require-corp` で落ちるためです。見出しは Iowan Old Style / Yu Mincho、本文は Hiragino Sans / Noto Sans JP です。
+
+Pyodide のスクリプトには `crossorigin="anonymous"` を付けます。これも COEP で no-cors のスクリプトが止まるのを避けるためです。
