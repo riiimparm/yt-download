@@ -41,3 +41,15 @@ resource "cloudflare_worker_version" "app" {
     content_type = "application/javascript+module"
   }]
 }
+
+# Cloudflare creates the DNS record and the certificate for this hostname, so
+# there is no separate cloudflare_dns_record here. Empty hostname keeps the
+# Worker on workers.dev only.
+resource "cloudflare_workers_custom_domain" "app" {
+  count = var.hostname == "" ? 0 : 1
+
+  account_id = var.account_id
+  zone_id    = var.zone_id
+  hostname   = var.hostname
+  service    = cloudflare_worker.app.name
+}

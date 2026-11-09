@@ -107,6 +107,18 @@ https://github.com/cloudflare/terraform-provider-cloudflare/blob/v5.28.1/interna
 scripts/stage-assets.sh
 ```
 
+### カスタムドメインと DNS
+
+`hostname` が空の間、Worker は `workers.dev` だけに出ます。`hostname` にホスト名を、`zone_id` にそのホスト名を持つゾーンの ID を入れると、`cloudflare_workers_custom_domain` がカスタムドメインを作ります。DNS レコードと証明書は Cloudflare が作るので、`cloudflare_dns_record` は置いていません。レコードは Worker を直接指します。
+
+https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
+
+ゾーンは Cloudflare で有効になっていること、そのホスト名に CNAME レコードが残っていないことが要ります。残っていれば先に消します。ワイルドカードは使えません。ホスト名に完全一致したリクエストだけが Worker へ行きます。
+
+`hostname` を空に戻すと、カスタムドメインごと DNS レコードも消えます。`zone_id` は `hostname` を入れたときだけ必須で、変数のバリデーションが抜けを止めます。
+
+このリポジトリでは `hostname` を空のままにしています。カスタムドメインは未検証です。
+
 ### state は R2
 
 Terraform の state は Cloudflare R2 を S3 互換バックエンドにして置きます。公式の手順は Remote R2 backend です。
@@ -189,7 +201,11 @@ Workers 用の Cloudflare API トークンと、R2 の S3 アクセスキーは�
 
 https://developers.cloudflare.com/workers/authorization/workers/
 
-Zone の Workers Routes Write は付けません。カスタムドメインもルートも作りません。同じ文書が、ルートを変えないデプロイに Workers Routes Write は不要だと書いています。
+`hostname` を空にしておく間は、Zone の Workers Routes Write は要りません。同じ文書が、ルートを変えないデプロイに Workers Routes Write は不要だと書いています。
+
+`hostname` を入れると、カスタムドメインを作るので、そのゾーンに Zone の Workers Routes Write が要ります。同じ文書は、ルートとカスタムドメインの変更には、影響するゾーンごとに絞ったこの権限が要る、と書いています。DNS の権限には触れていません。レコードはカスタムドメインの作成が作ります。プロバイダの `cloudflare_workers_custom_domain` の Accepted Permissions も `Workers Scripts Read` と `Workers Scripts Write` だけです。apply が DNS で落ちたら、そのゾーンの DNS Write を足します。
+
+https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/workers_custom_domain
 
 Workers Tail Read も付けません。`wrangler tail` は使いません。R2、KV、D1 の権限も付けません。同じ文書の Bindings は、バインディング付き Worker をデプロイするだけなら、束ねた先の権限は要らないと書いています。ここでの `ASSETS` は静的アセットで、R2 ではありません。
 
@@ -237,6 +253,8 @@ https://developers.cloudflare.com/terraform/advanced-topics/remote-backend/
 | `R2_SECRET_ACCESS_KEY` | Secret | そのシークレット |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare のアカウント ID。`TF_VAR_account_id` と、R2 エンドポイントのホストに使う |
 | `TF_STATE_BUCKET` | Variable | state 用 R2 バケット名。例は `yt-download-tfstate` |
+| `CLOUDFLARE_ZONE_ID` | Variable | カスタムドメインを置くゾーンの ID。`TF_VAR_zone_id`。未設定なら空 |
+| `APP_HOSTNAME` | Variable | カスタムドメインのホスト名。`TF_VAR_hostname`。未設定なら `workers.dev` だけ |
 
 値はコマンドラインに書かず、標準入力で渡します。
 
@@ -246,6 +264,8 @@ gh secret set R2_ACCESS_KEY_ID --repo riiimparm/yt-download
 gh secret set R2_SECRET_ACCESS_KEY --repo riiimparm/yt-download
 gh variable set CLOUDFLARE_ACCOUNT_ID --repo riiimparm/yt-download
 gh variable set TF_STATE_BUCKET --repo riiimparm/yt-download
+gh variable set CLOUDFLARE_ZONE_ID --repo riiimparm/yt-download
+gh variable set APP_HOSTNAME --repo riiimparm/yt-download
 ```
 
 このリポジトリでは、トークンの作成、Secret の登録、`terraform apply`、本番へのデプロイはしていません。

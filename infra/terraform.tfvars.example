@@ -1,2 +1,7 @@
 account_id  = "0123456789abcdef0123456789abcdef"
 worker_name = "yt-download"
+
+# Leave hostname empty to stay on workers.dev. Setting it makes Cloudflare
+# add the DNS record for the Worker in this zone.
+zone_id  = ""
+hostname = ""
