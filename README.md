@@ -22,7 +22,15 @@ python3 -m http.server 8766
 2. 画面にはチェックポイントだけが出ます。`読み込み pass`、`情報取得 pass`、`ダウンロード pass`、`変換 pass`。失敗した段は `失敗` と出ます。スタックトレースは画面に出さず、ブラウザのコンソールだけです。
 3. 変換まで通ったときだけ「保存」が出ます。押すとブラウザのダウンロードになります。
 
-YouTube の視聴 URL、Shorts、`youtu.be` は、実行前に単体動画の `https://youtu.be/動画ID` へ揃えます。`list`、`start_radio`、`si` などのパラメータは捨てます。`t` と `start` が秒だけのときだけ `?t=` として残します。それ以外の URL はそのままです。画面には揃え後の URL を出しません。この揃えは再生リストとして取りに行くのを避けるだけです。CORS を越えるのは中継があるときだけです。
+入力は YouTube の単体動画だけを受け付けます（`normalize-url.mjs`）。ホストは `youtube.com` とそのサブドメイン、`youtube-nocookie.com`、`youtubekids.com`、`youtu.be`、`youtube.googleapis.com`。パスは `watch?v=`、`?v=`、`v/`、`e/`、`embed/`、`shorts/`、`live/`、`youtu.be/動画ID`。動画 ID は 11 文字の `[A-Za-z0-9_-]` です。
+
+形は yt-dlp 2026.10.26 の `YoutubeIE._VALID_URL` から採り、そこが併せて受けている第三者ミラー（invidious、pwnyoutube、deturl、hooktube、yourepeat、vid.plus、zwearz、cleanvideosearch）と、裸の動画 ID は外しました。ミラーは YouTube ではなく、中継の許可リストにも入っていません。
+
+https://github.com/yt-dlp/yt-dlp/blob/2026.10.26/yt_dlp/extractor/youtube/_video.py
+
+受けた URL は `https://youtu.be/動画ID` に揃えます。`list`、`start_radio`、`si` などのパラメータは捨て、`t` と `start` が秒だけのときだけ `?t=` として残します。再生リストとして取りに行くのを避けるためです。画面には揃え後の URL を出しません。
+
+それ以外は実行前に止めます。チャンネル、再生リスト、`live/live_stream`、`embed/videoseries`、ユーザー情報やポートの付いた URL、`javascript:`、YouTube に似せた別ドメイン、ほかのサイトは、入力欄の検証メッセージで戻します。yt-dlp にも中継にも渡しません。
 
 Workers で開いているときは、ページが先に `GET /proxy` を見ます。応答ヘッダ `x-yt-relay: 1` があるときだけ `fetch` と `XMLHttpRequest` を包み、許可したホストへの通信を `/proxy?url=` へ変えます。ヘッダが無い（静的サーバの 404 など）ときは包みません。
 
@@ -32,6 +40,8 @@ Workers で開いているときは、ページが先に `GET /proxy` を見ま�
 
 - 宛先は `https` だけです。ポートは 443 だけです。ユーザー情報の付いた URL は拒否します。
 - ホストは次のサフィックスと、その本当のサブドメインだけです。`youtube.com`、`youtu.be`、`googlevideo.com`、`ytimg.com`、`youtubei.googleapis.com`。比較の前に末尾のドットを一つ外します。`evil-youtube.com` や `notyoutube.com` や `youtube.com.evil.com` は、ラベルの区切りがドットではないので通りません。IP アドレスも拒否します。
+- `Sec-Fetch-Site` が `same-origin` 以外（`cross-site`、`same-site`、`none`）のときは 403 です。よそのページからの利用と、`/proxy?url=` への直接のナビゲーションを止めます。ヘッダを送らないクライアントは通します。ブラウザの外からは偽装できるので、これは踏み台利用の抑止であって認証ではありません。
+- 応答には `X-Content-Type-Options: nosniff` と `Content-Security-Policy: sandbox` を付けます。中継は上流の `Content-Type` をそのまま返すので、`text/html` がこのオリジンの文書になる道を閉じます。`*.workers.dev` は公開接尾辞リストに載っていて他のサイトと混ざりませんでしたが、自分のゾーンのサブドメインではそうなりません。
 - メソッドは `GET`、`HEAD`、`POST` だけです。`POST` は YouTube の innertube（`/youtubei/v1/...`）用で、本文は 1 MiB までです。それより大きい本文は 413 で、上流へ送りません。
 - 上流へ転送するリクエストヘッダは `Accept`、`Accept-Language`、`Content-Type`、`Origin`、`Range`、`Referer`、`User-Agent`、`X-Goog-Visitor-Id`、`X-YouTube-Client-Name`、`X-YouTube-Client-Version` だけです。`Cookie` と `Authorization` は転送しません。ログインセッションは載りません。
 - 応答の本文はバッファせず、上流のストリームをそのまま返します。`Set-Cookie` は返しません。`Content-Encoding` が付いているときは、展開後の長さと食い違うので `Content-Length` も外します。
@@ -175,7 +185,7 @@ terraform plan
 terraform apply
 ```
 
-`CLOUDFLARE_API_TOKEN` はシェルの履歴に残さないでください。`terraform.tfvars` の代わりに `TF_VAR_account_id` でも渡します。アカウント ID の例は `terraform.tfvars.example` にあります。
+`CLOUDFLARE_API_TOKEN` はシェルの履歴に残さないでください。`terraform.tfvars` の代わりに `TF_VAR_account_id` でも渡します。`terraform.tfvars.example` と `backend.hcl.example` のアカウント ID は置き場所を示すだけのダミーです。実物はコミットしません。
 
 バックエンドなしの検査は次です。資格情報は要りません。
 
@@ -244,12 +254,11 @@ https://developers.cloudflare.com/terraform/advanced-topics/remote-backend/
 `.github/workflows/infra.yml` です。
 
 - pull request では、フォークを含め、`terraform fmt -check`、`terraform init -backend=false`、`terraform validate` を資格情報なしで走らせます。
-- 同じリポジトリから出た pull request だけ `terraform plan` します。`github.event.pull_request.head.repo.full_name == github.repository` で、フォークの plan は走りません。`pull_request_target` は使いません。フォークの workflow から secrets は渡りません。
-- plan の出力は、その pull request にコメントします。
-- `main` への push だけ `terraform apply` します。静的アセットもこの apply に含まれます。`wrangler deploy` は呼びません。
+- `terraform plan` は pull request では走らせません。apply の直前、`main` への push でだけ走らせます。pull request から起きるジョブに `CLOUDFLARE_API_TOKEN` も R2 のキーも渡らないので、push 権限のある人が `infra/*.tf` を書き換えて plan の時点でトークンを持ち出す経路がありません。`pull_request_target` も使いません。
+- `main` への push だけ `terraform plan -out=tfplan` と `terraform apply tfplan` を走らせます。apply は plan したファイルをそのまま当てます。静的アセットもこの apply に含まれます。`wrangler deploy` は呼びません。
 - `TF_STATE_BUCKET` が未設定のうちは plan も apply も走りません。資格情報を入れていないこのリポジトリで、pull request が毎回赤くならないようにしています。変数を入れれば走ります。バケット名の形を見るステップの検査は残してあります。
 - `concurrency` は `yt-download-infra` の一つです。`cancel-in-progress` は false なので、走っている apply を次の push が途中で殺しません。
-- 既定の `permissions` は `contents: read` です。plan のジョブだけ、コメントのために `pull-requests: write` を足しています。
+- `permissions` は `contents: read` だけです。pull request にコメントしないので `pull-requests: write` は要りません。
 
 資格情報はワークフローの中に書いていません。
 

@@ -1,6 +1,6 @@
 import { checkpointItems } from "./checkpoints.mjs";
 import { chooseFormats, downloadName, ffmpegArgs, outputName } from "./convert-plan.mjs";
-import { normalizeUrl } from "./normalize-url.mjs";
+import { canonicalVideoUrl } from "./normalize-url.mjs";
 import { createRelayFetch, probeRelay, wrapXMLHttpRequest } from "./relay-client.mjs";
 
 const PYODIDE_VERSION = "314.0.7";
@@ -27,9 +27,17 @@ form.addEventListener("submit", (event) => {
   event.preventDefault();
   const raw = urlInput.value.trim();
   if (!raw || busy) return;
+  const url = canonicalVideoUrl(raw);
+  if (!url) {
+    urlInput.setCustomValidity("YouTube の動画 URL だけを受け付けます");
+    urlInput.reportValidity();
+    return;
+  }
   const format = form.elements.format.value === "mp3" ? "mp3" : "mp4";
-  run(normalizeUrl(raw), format);
+  run(url, format);
 });
+
+urlInput.addEventListener("input", () => urlInput.setCustomValidity(""));
 
 globalThis.reportLog = (line) => {
   console.log(line);

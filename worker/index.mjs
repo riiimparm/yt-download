@@ -60,6 +60,16 @@ export async function handleProxy(request, options = {}) {
     return jsonResponse(405, { error: "method not allowed" }, { allow: "GET, HEAD, POST" });
   }
 
+  // Only this page may use the relay. "none" is a typed URL or a bookmark,
+  // "same-site" is another host in the zone, "cross-site" is anyone else.
+  // ponytail: a missing header passes, for clients that send none. Anything
+  // outside a browser can set the header anyway, so rate limiting or Access
+  // is the answer if the relay ever needs a real gate.
+  const site = request.headers.get("sec-fetch-site");
+  if (site !== null && site !== "same-origin") {
+    return jsonResponse(403, { error: "the relay only answers its own page" });
+  }
+
   const incoming = new URL(request.url);
   const raw = incoming.searchParams.get("url");
   if (!raw) {
@@ -126,6 +136,9 @@ function normalizeHost(hostname) {
 
 function hostAllowed(host) {
   if (!host || host.includes("..")) return false;
+  // Letters, digits, hyphen, dot only. URL parsing already punycodes an IDN,
+  // so anything left outside this set is not a hostname we want to fetch.
+  if (!/^[a-z0-9.-]+$/.test(host)) return false;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || /^\d+$/.test(host)) return false;
   return RELAY_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
 }
@@ -173,9 +186,7 @@ async function fetchFollowing(target, method, headers, body, fetchImpl, hops) {
 }
 
 async function passUpstream(upstream, method) {
-  const headers = new Headers();
-  headers.set("x-yt-relay", "1");
-  headers.set("cache-control", "no-store");
+  const headers = relayHeaders();
   const encoding = upstream.headers.get("content-encoding");
   for (const name of ["content-type", "content-range", "accept-ranges"]) {
     const value = upstream.headers.get(name);
@@ -190,6 +201,21 @@ async function passUpstream(upstream, method) {
     return new Response(null, { status: upstream.status, headers });
   }
   return new Response(upstream.body, { status: upstream.status, headers });
+}
+
+// Relayed bytes keep the upstream content-type, so they must never become a
+// document in this origin. nosniff stops the type being guessed, and the
+// sandbox directive puts any document made from the response in an opaque
+// origin, where it cannot read this origin's cookies or storage. On
+// workers.dev the public suffix list did that much; a custom domain under a
+// real zone does not.
+function relayHeaders() {
+  return new Headers({
+    "x-yt-relay": "1",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "sandbox",
+  });
 }
 
 function isRedirect(status) {
@@ -221,11 +247,8 @@ async function readLimited(stream, max) {
 }
 
 function jsonResponse(status, payload, extra) {
-  const headers = new Headers({
-    "content-type": "application/json; charset=utf-8",
-    "x-yt-relay": "1",
-    "cache-control": "no-store",
-  });
+  const headers = relayHeaders();
+  headers.set("content-type", "application/json; charset=utf-8");
   if (extra?.allow) headers.set("allow", extra.allow);
   return new Response(JSON.stringify(payload), { status, headers });
 }

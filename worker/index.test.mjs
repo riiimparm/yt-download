@@ -342,3 +342,46 @@ function assertIsolated(response) {
   assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
   assert.equal(response.headers.get("cross-origin-embedder-policy"), "require-corp");
 }
+
+test("the relay answers only its own page", async () => {
+  const { calls, fetchImpl } = jsonFetch(() => new Response("media", {
+    status: 200,
+    headers: { "content-type": "video/mp4" },
+  }));
+  for (const site of ["cross-site", "same-site", "none"]) {
+    const response = await handleProxy(
+      proxyRequest(VIDEO, { headers: { "sec-fetch-site": site } }),
+      { fetchImpl },
+    );
+    assert.equal(response.status, 403, site);
+    assert.deepEqual(await response.json(), { error: "the relay only answers its own page" });
+  }
+  assert.equal(calls.length, 0);
+
+  const same = await handleProxy(
+    proxyRequest(VIDEO, { headers: { "sec-fetch-site": "same-origin" } }),
+    { fetchImpl },
+  );
+  assert.equal(same.status, 200);
+  assert.equal(calls.length, 1);
+});
+
+test("relay responses never become a document in this origin", async () => {
+  const { fetchImpl } = jsonFetch(() => new Response("<script>alert(1)</script>", {
+    status: 200,
+    headers: { "content-type": "text/html" },
+  }));
+  const html = await handleProxy(proxyRequest(VIDEO), { fetchImpl });
+  assert.equal(html.headers.get("content-type"), "text/html");
+  assertNotADocument(html);
+
+  const error = await handleProxy(proxyRequest("https://example.com/"), { fetchImpl });
+  assert.equal(error.status, 403);
+  assertNotADocument(error);
+});
+
+function assertNotADocument(response) {
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("content-security-policy"), "sandbox");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+}
