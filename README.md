@@ -281,6 +281,7 @@ https://developers.cloudflare.com/terraform/advanced-topics/remote-backend/
 - `terraform plan` は pull request では走らせません。apply の直前、`main` への push でだけ走らせます。pull request から起きるジョブに `CLOUDFLARE_API_TOKEN` も R2 のキーも渡らないので、push 権限のある人が `infra/*.tf` を書き換えて plan の時点でトークンを持ち出す経路がありません。`pull_request_target` も使いません。
 - `main` への push だけ `terraform plan -out=tfplan` と `terraform apply tfplan` を走らせます。apply は plan したファイルをそのまま当てます。静的アセットもこの apply に含まれます。`wrangler deploy` は呼びません。
 - `TF_STATE_BUCKET` が未設定のうちは plan も apply も走りません。資格情報を入れていないこのリポジトリで、pull request が毎回赤くならないようにしています。変数を入れれば走ります。バケット名の形を見るステップの検査は残してあります。
+- `workflow_dispatch` も受けます。トークンを直したあとなど、同じコミットのまま apply をやり直すときに使います。`gh workflow run infra.yml --ref main` です。失敗した run の再実行は GitHub 側が断ることがあります。
 - `concurrency` は `yt-download-infra` の一つです。`cancel-in-progress` は false なので、走っている apply を次の push が途中で殺しません。
 - `permissions` は `contents: read` だけです。pull request にコメントしないので `pull-requests: write` は要りません。
 
