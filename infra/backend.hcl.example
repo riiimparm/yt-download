@@ -1,0 +1,5 @@
+bucket = "yt-download-tfstate"
+
+endpoints = {
+  s3 = "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com"
+}
