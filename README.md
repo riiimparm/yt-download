@@ -47,6 +47,8 @@ Workers で開いているときは、ページが先に `GET /proxy` を見ま�
 - 応答の本文はバッファせず、上流のストリームをそのまま返します。`Set-Cookie` は返しません。`Content-Encoding` が付いているときは、展開後の長さと食い違うので `Content-Length` も外します。
 - リダイレクトは Worker の中で追います。各ホップを同じ規則で見て、許可しない宛先へは進みません。最大 5 回です。ブラウザへ 302 を返すと、ブラウザが YouTube へ直接行って CORS で落ちるためです。
 
+中継に認証はありません。`Sec-Fetch-Site` はブラウザにしか効かないので、ブラウザの外からは誰でも叩けます。回数の上限は Worker のコードではなく、Cloudflare のレート制限ルールで掛けます（下の「レート制限」）。応答のバイト数に上限はありません。
+
 yt-dlp 2026.10.26 の web クライアントは `www.youtube.com` の innertube を使います。`youtubei.googleapis.com` は抽出器の `innertube_host` で選ばれることがあるので、サフィックスに入れてあります。動画本体は `googlevideo.com`、画像とプレイヤー周辺の一部は `ytimg.com` です。
 
 この中継は PO Token を作りません。Cookie も渡しません。YouTube がデータセンターの IP を拒否したり、PO Token を要求したりすると、中継があっても取得は失敗します。署名用の JS ランタイム（deno / node）が Pyodide の中で動くかも、ここでは未測定です。
@@ -128,6 +130,24 @@ https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
 `hostname` を空に戻すと、カスタムドメインごと DNS レコードも消えます。`zone_id` は `hostname` を入れたときだけ必須で、変数のバリデーションが抜けを止めます。
 
 このリポジトリでは `hostname` を空のままにしています。カスタムドメインは未検証です。
+
+### レート制限
+
+`hostname` を入れたときだけ、`cloudflare_ruleset` がそのゾーンの `http_ratelimit` フェーズにルールを一つ置きます。`/proxy` への同じ IP からのリクエストが 10 秒間に 30 回を超えたら、そのあと 10 秒間は 429 で弾きます。
+
+https://developers.cloudflare.com/waf/rate-limiting-rules/
+
+Free プランはゾーンあたり 1 本、期間は 10 秒固定、カウントの特性は IP だけです。`cf.colo.id` は API で必須なので一緒に入れています。カウントはコロケーションごとなので、実際の上限はエッジの数だけ緩みます。
+
+これはフェーズのエントリーポイントそのものです。同じゾーンの `http_ratelimit` に画面から入れたルールがあれば、apply が消します。Free プランの 1 本をこの Worker 以外で使っているなら、先に見てください。
+
+カスタムドメインでは Worker がオリジンの扱いなので、リクエストはゾーンのパイプライン（DDoS、カスタムルール、レート制限、マネージドルール）を通ってから Worker に入ります。`workers.dev` は Cloudflare 側のゾーンなので、このルールは掛かりません。`hostname` が空の間、ルールは作られません。
+
+https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
+
+30 回 / 10 秒は、動画 1 本あたりのリクエストが情報取得で数回、ダウンロードは選んだ形式ごとに 1 回（`convert-plan.mjs` の `chooseFormats` は最大 2 つ）であることから置いた数です。足りなければ `infra/main.tf` の `requests_per_period` を直します。
+
+回数の制限であって、バイト数の制限ではありません。1 リクエストで動画 1 本を流せます。そこを閉じるなら Worker 側で中継バイト数に上限を付けます。このルールは未検証です（`hostname` が空のため）。
 
 ### state は R2
 
@@ -214,6 +234,10 @@ https://developers.cloudflare.com/workers/authorization/workers/
 `hostname` を空にしておく間は、Zone の Workers Routes Write は要りません。同じ文書が、ルートを変えないデプロイに Workers Routes Write は不要だと書いています。
 
 `hostname` を入れると、カスタムドメインを作るので、そのゾーンに Zone の Workers Routes Write が要ります。同じ文書は、ルートとカスタムドメインの変更には、影響するゾーンごとに絞ったこの権限が要る、と書いています。DNS の権限は付けません。レコードと証明書は、カスタムドメインの作成の中で Cloudflare が作ります。
+
+同じ `hostname` でレート制限ルールも置くので、そのゾーンに Zone の WAF Write も要ります。Cloudflare の Terraform 文書が、ゾーンのレート制限ルールに必要なトークン権限としてこれを挙げています。権限一覧の画面では `Zone WAF Edit` の名前で出ることがあります。
+
+https://developers.cloudflare.com/terraform/additional-configurations/rate-limiting-rules/
 
 `/accounts/{account_id}/workers/domains` の Accepted Permissions は `Workers Scripts Write` だけです。プロバイダの `cloudflare_workers_custom_domain` は `Workers Scripts Read` と `Workers Scripts Write` です。Cloudflare のトークンテンプレート `Edit Cloudflare Workers` も、Zone の Workers Routes Write と Account 側の Workers 権限などで、DNS は入っていません。DNS は別のテンプレートです。Zone の DNS Write が要るのは、レコードを自分で足したり消したりする場合です。この Terraform は `cloudflare_dns_record` を持ちません。
 

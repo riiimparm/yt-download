@@ -53,3 +53,32 @@ resource "cloudflare_workers_custom_domain" "app" {
   hostname   = var.hostname
   service    = cloudflare_worker.app.name
 }
+
+# One rate limiting rule for /proxy, so the relay is not free bandwidth. The
+# free plan allows exactly one rule per zone, counting by IP over a fixed 10
+# second window. Only traffic through the zone is counted: on workers.dev the
+# Worker sits in Cloudflare's own zone, where this rule does not apply.
+# ponytail: a request rate is not a byte cap, one request can still stream a
+# whole video. Cap relayed bytes in the Worker if that becomes the problem.
+resource "cloudflare_ruleset" "relay_rate_limit" {
+  count = var.hostname == "" ? 0 : 1
+
+  zone_id = var.zone_id
+  name    = "yt-download relay"
+  kind    = "zone"
+  phase   = "http_ratelimit"
+
+  rules = [{
+    action      = "block"
+    description = "Limit /proxy to 30 requests per 10 seconds per IP"
+    expression  = "http.request.uri.path eq \"/proxy\""
+
+    ratelimit = {
+      # cf.colo.id is mandatory in the API. Free and Pro count by IP only.
+      characteristics     = ["cf.colo.id", "ip.src"]
+      period              = 10
+      requests_per_period = 30
+      mitigation_timeout  = 10
+    }
+  }]
+}
