@@ -225,6 +225,8 @@ test("a redirect to a non-allowlisted host is not fetched", async () => {
   }));
   const protocolRelative = await handleProxy(proxyRequest(VIDEO), { fetchImpl });
   assert.equal(protocolRelative.status, 403);
+  assert.equal(protocolRelative.headers.get("x-yt-redirect-host"), "evil.example");
+  assert.deepEqual(await protocolRelative.json(), { error: "redirect host is not allowed", host: "evil.example" });
   assert.equal(calls.length, 1);
 
   const { calls: calls2, fetchImpl: fetch2 } = jsonFetch(() => new Response(null, {

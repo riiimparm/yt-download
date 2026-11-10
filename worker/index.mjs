@@ -202,7 +202,13 @@ async function fetchFollowing(target, method, headers, body, fetchImpl, hops) {
     return { error: jsonResponse(502, { error: "bad redirect" }) };
   }
   const checked = checkRelayUrl(next);
-  if (!checked.ok) return { error: jsonResponse(403, { error: "redirect host is not allowed" }) };
+  if (!checked.ok) {
+    const host = normalizeHost(next.hostname);
+    console.error(`redirect host is not allowed: ${host || "(none)"}`);
+    return {
+      error: jsonResponse(403, { error: "redirect host is not allowed", host }, { host }),
+    };
+  }
 
   let nextMethod = method;
   let nextHeaders = headers;
@@ -281,5 +287,6 @@ function jsonResponse(status, payload, extra) {
   const headers = relayHeaders();
   headers.set("content-type", "application/json; charset=utf-8");
   if (extra?.allow) headers.set("allow", extra.allow);
+  if (extra?.host) headers.set("x-yt-redirect-host", extra.host);
   return new Response(JSON.stringify(payload), { status, headers });
 }
