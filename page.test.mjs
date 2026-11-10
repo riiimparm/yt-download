@@ -21,3 +21,10 @@ test("corners stay square and reduced motion stops the bar", () => {
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
   assert.match(css, /animation:\s*none/);
 });
+
+test("the page block is centered and the title is centered", () => {
+  assert.match(css, /display:\s*flex/);
+  assert.match(css, /margin:\s*auto/);
+  assert.match(css, /max-width:\s*44rem/);
+  assert.match(css, /text-align:\s*center/);
+});

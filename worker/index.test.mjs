@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import worker, { checkRelayUrl, handleProxy, isAllowedRelayUrl } from "./index.mjs";
+import worker, { checkRelayUrl, handleProxy, isAllowedRelayUrl, withJavaScriptType } from "./index.mjs";
 
 const VIDEO = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
 
@@ -336,6 +336,41 @@ test("the worker serves /proxy itself and everything else from assets", async ()
   const missing = await worker.fetch(new Request("https://worker.test/"), {});
   assert.equal(missing.status, 500);
   assertIsolated(missing);
+});
+
+test("javascript assets are served as javascript", async () => {
+  const body = 'export * from "./classes.js";\nexport * from "./types.js";\n';
+  const env = {
+    ASSETS: {
+      async fetch(request) {
+        const pathname = new URL(request.url).pathname;
+        const type = pathname.endsWith(".css") ? "text/css" : "text/vnd.trolltech.linguist";
+        const status = pathname.endsWith("missing.js") ? 404 : 200;
+        return new Response(body, { status, headers: { "content-type": type, "cache-control": "public" } });
+      },
+    },
+  };
+  const js = await worker.fetch(new Request("https://worker.test/vendor/ffmpeg/index.js"), env);
+  assert.equal(js.headers.get("content-type"), "text/javascript");
+  assert.equal(js.headers.get("cache-control"), "public");
+  assert.equal(await js.text(), body);
+  assertIsolated(js);
+
+  const mjs = await worker.fetch(new Request("https://worker.test/vendor/ffmpeg/empty.mjs"), env);
+  assert.equal(mjs.headers.get("content-type"), "text/javascript");
+
+  const css = await worker.fetch(new Request("https://worker.test/style.css"), env);
+  assert.equal(css.headers.get("content-type"), "text/css");
+
+  const missing = await worker.fetch(new Request("https://worker.test/missing.js"), env);
+  assert.equal(missing.status, 404);
+  assert.equal(missing.headers.get("content-type"), "text/vnd.trolltech.linguist");
+
+  const already = withJavaScriptType(
+    "https://worker.test/app.js",
+    new Response("x", { status: 200, headers: { "content-type": "text/javascript; charset=utf-8" } }),
+  );
+  assert.equal(already.headers.get("content-type"), "text/javascript; charset=utf-8");
 });
 
 function assertIsolated(response) {

@@ -330,6 +330,8 @@ mp3 への変換と、映像と音声を一つの mp4 にまとめる処理は�
 
 ラッパの ESM（`@ffmpeg/ffmpeg@0.12.15`）は `scripts/fetch-ffmpeg.sh` が npm の tarball から取り、gitignore した `vendor/ffmpeg/` に置きます。`scripts/stage-assets.sh` がそれを `dist/assets/vendor/ffmpeg/` にコピーします。ページは同じオリジンのその `index.js` を読み、そこから同じオリジンの `worker.js` を起動します。
 
+`index.js` と `index.d.ts` は同じ 58 バイトです。プロバイダ 5.28.1 は SHA-256 の先頭 32 桁でファイルを一つにまとめ、残ったパスの拡張子で Content-Type を付けます。`.d.ts` の拡張子は `.ts` で、この環境では `text/vnd.trolltech.linguist` です。本番の `/vendor/ffmpeg/index.js` はその型で返り、module の import が失敗していました。`fetch-ffmpeg.sh` は `.js` と `.mjs` 以外を消し、`stage-assets.sh` もそれらだけをコピーします。同じハッシュはアップロードし直されないので、Worker は `.js` と `.mjs` の 200 を `text/javascript` に直します。
+
 コアの `ffmpeg-core.js` と `ffmpeg-core.wasm`（約 31 MiB）は jsDelivr から取り、blob URL にしてワーカーへ渡します。Workers の静的アセットは 1 ファイル 25 MiB までで、この wasm は載りません。`wrangler dev` は `dist/assets` に置くと `Asset too large` で止まりました。jsDelivr は `Access-Control-Allow-Origin: *` と `Cross-Origin-Resource-Policy: cross-origin` を返します。それでも Chrome は、COEP `require-corp` のページから jsDelivr の `worker.js` を `new Worker` すると `SecurityError` で拒みました。ワーカー本体を同じオリジンにし、コアだけを CORS で読んで blob にすると、この拒否を避けられます。Pyodide のスクリプトは jsDelivr のままです。`crossorigin="anonymous"` を付け、応答の CORS と CORP で通ります。
 
 マルチスレッド版 `@ffmpeg/core-mt` は SharedArrayBuffer が要り、ページが cross-origin isolated である必要があります。Worker は静的ファイルと中継の両方に COOP と COEP を付けます。手元の `python3 -m http.server` はそのヘッダを出せません。単一スレッド版は SharedArrayBuffer を使わないので、どちらの配信でも変換できます。`python3 -m http.server` で変換するときも、先に `scripts/fetch-ffmpeg.sh` を実行します。
