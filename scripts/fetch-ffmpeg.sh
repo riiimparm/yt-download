@@ -12,5 +12,10 @@ tar -xzf "$tmp/ffmpeg.tgz" -C "$tmp/ffmpeg" package/dist/esm
 rm -rf "$root/vendor"
 mkdir -p "$root/vendor"
 cp -a "$tmp/ffmpeg/package/dist/esm" "$root/vendor/ffmpeg"
+# index.js and index.d.ts are the same 58 bytes. The provider uploads one
+# hash and sets Content-Type from the path it keeps. .d.ts is a .ts file,
+# and that type is text/vnd.trolltech.linguist, so the module import fails.
+find "$root/vendor/ffmpeg" -type f ! -name '*.js' ! -name '*.mjs' -delete
 test -f "$root/vendor/ffmpeg/index.js"
 test -f "$root/vendor/ffmpeg/worker.js"
+test ! -e "$root/vendor/ffmpeg/index.d.ts"
