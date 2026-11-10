@@ -12,6 +12,11 @@ export const RELAY_SUFFIXES = Object.freeze([
   "youtubei.googleapis.com",
 ]);
 
+// consent.youtube.com already matches the youtube.com suffix. consent.google.com
+// does not, and it is the consent page YouTube sends a third-party fetch to.
+// Exact hosts only, and only as a redirect target.
+const CONSENT_HOSTS = new Set(["consent.google.com", "consent.youtube.com"]);
+
 const REQUEST_HEADERS = new Set([
   "accept",
   "accept-language",
@@ -179,7 +184,21 @@ function upstreamHeaders(input) {
   const headers = filterRequestHeaders(input);
   headers.set("origin", "https://www.youtube.com");
   headers.set("referer", "https://www.youtube.com/");
+  // yt-dlp sets SOCS itself. The browser cookie is not on the allowlist, so
+  // the consent choice never arrived and YouTube redirects the watch page.
+  // This is that same choice, not a visitor session.
+  headers.set("cookie", "SOCS=CAI");
   return headers;
+}
+
+function allowedRedirect(url) {
+  const checked = checkRelayUrl(url);
+  if (checked.ok) return checked;
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return checked;
+  const host = normalizeHost(url.hostname);
+  if (!CONSENT_HOSTS.has(host)) return checked;
+  url.hash = "";
+  return { ok: true, url };
 }
 
 async function fetchFollowing(target, method, headers, body, fetchImpl, hops) {
@@ -201,7 +220,7 @@ async function fetchFollowing(target, method, headers, body, fetchImpl, hops) {
   } catch {
     return { error: jsonResponse(502, { error: "bad redirect" }) };
   }
-  const checked = checkRelayUrl(next);
+  const checked = allowedRedirect(next);
   if (!checked.ok) {
     const host = normalizeHost(next.hostname);
     console.error(`redirect host is not allowed: ${host || "(none)"}`);

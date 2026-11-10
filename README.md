@@ -43,7 +43,8 @@ Workers で開いているときは、ページが先に `GET /proxy` を見ま�
 - `Sec-Fetch-Site` が `same-origin` 以外（`cross-site`、`same-site`、`none`）のときは 403 です。よそのページからの利用と、`/proxy?url=` への直接のナビゲーションを止めます。ヘッダを送らないクライアントは通します。ブラウザの外からは偽装できるので、これは踏み台利用の抑止であって認証ではありません。
 - 応答には `X-Content-Type-Options: nosniff` と `Content-Security-Policy: sandbox` を付けます。中継は上流の `Content-Type` をそのまま返すので、`text/html` がこのオリジンの文書になる道を閉じます。`*.workers.dev` は公開接尾辞リストに載っていて他のサイトと混ざりませんでしたが、自分のゾーンのサブドメインではそうなりません。
 - メソッドは `GET`、`HEAD`、`POST` だけです。`POST` は YouTube の innertube（`/youtubei/v1/...`）用で、本文は 1 MiB までです。それより大きい本文は 413 で、上流へ送りません。
-- 上流へ転送するリクエストヘッダは `Accept`、`Accept-Language`、`Content-Type`、`Range`、`User-Agent`、`X-Goog-Visitor-Id`、`X-YouTube-Client-Name`、`X-YouTube-Client-Version` だけです。`Origin` は常に `https://www.youtube.com`、`Referer` は常に `https://www.youtube.com/` です。ブラウザが `/proxy` に付けるこのページの Origin をそのまま渡すと、`youtubei/v1/player` は 403 の HTML を返します。`Cookie` と `Authorization` は転送しません。ログインセッションは載りません。
+- 上流へ転送するリクエストヘッダは `Accept`、`Accept-Language`、`Content-Type`、`Range`、`User-Agent`、`X-Goog-Visitor-Id`、`X-YouTube-Client-Name`、`X-YouTube-Client-Version` だけです。`Origin` は常に `https://www.youtube.com`、`Referer` は常に `https://www.youtube.com/` です。ブラウザが `/proxy` に付けるこのページの Origin をそのまま渡すと、`youtubei/v1/player` は 403 の HTML を返します。訪れた人の `Cookie` と `Authorization` は転送しません。ログインセッションは載りません。同意画面を飛ばすため、上流には `SOCS=CAI` だけを付けます。
+- 許可していないホストへのリダイレクトは 403 で、JSON の `host` と `X-Yt-Redirect-Host` にそのホスト名を入れます。`consent.youtube.com` は `youtube.com` のサブドメインなので最初から許可です。`consent.google.com` だけは、視聴ページのリダイレクト先として追います。最初の `url` としては許可しません。`www.google.com` は許可しません。
 - 応答の本文はバッファせず、上流のストリームをそのまま返します。`Set-Cookie` は返しません。`Content-Encoding` が付いているときは、展開後の長さと食い違うので `Content-Length` も外します。
 - リダイレクトは Worker の中で追います。各ホップを同じ規則で見て、許可しない宛先へは進みません。最大 5 回です。ブラウザへ 302 を返すと、ブラウザが YouTube へ直接行って CORS で落ちるためです。
 
