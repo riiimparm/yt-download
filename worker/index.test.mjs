@@ -98,9 +98,9 @@ test("forwards only the request headers yt-dlp needs", async () => {
       "accept-language": "ja",
       authorization: "Bearer secret",
       cookie: "SID=secret",
-      origin: "https://www.youtube.com",
+      origin: "https://yt-download.riiimparm.workers.dev",
       range: "bytes=0-1",
-      referer: "https://www.youtube.com/",
+      referer: "https://yt-download.riiimparm.workers.dev/",
       "user-agent": "yt-dlp",
       "x-goog-visitor-id": "visitor",
       "x-youtube-client-name": "1",
@@ -120,6 +120,8 @@ test("forwards only the request headers yt-dlp needs", async () => {
   assert.equal(sent.get("cookie"), null);
   assert.equal(sent.get("authorization"), null);
   assert.equal(sent.get("x-forwarded-for"), null);
+  assert.equal(sent.get("origin"), "https://www.youtube.com");
+  assert.equal(sent.get("referer"), "https://www.youtube.com/");
 });
 
 test("POST forwards a small body and stops when the body is too large", async () => {

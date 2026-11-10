@@ -88,7 +88,7 @@ export async function handleProxy(request, options = {}) {
     if (!body) return jsonResponse(413, { error: "body too large" });
   }
 
-  const headers = filterRequestHeaders(request.headers);
+  const headers = upstreamHeaders(request.headers);
   try {
     const result = await fetchFollowing(checked.url, method, headers, body, fetchImpl, 0);
     if (result.error) return result.error;
@@ -169,6 +169,16 @@ function filterRequestHeaders(input) {
   for (const [name, value] of input) {
     if (REQUEST_HEADERS.has(name.toLowerCase())) headers.append(name, value);
   }
+  return headers;
+}
+
+// The browser's fetch to /proxy sets Origin and Referer to this page.
+// YouTube answers a player POST that carries the workers.dev origin with
+// 403 HTML. The same POST with the YouTube origin is JSON.
+function upstreamHeaders(input) {
+  const headers = filterRequestHeaders(input);
+  headers.set("origin", "https://www.youtube.com");
+  headers.set("referer", "https://www.youtube.com/");
   return headers;
 }
 
