@@ -98,9 +98,9 @@ test("forwards only the request headers yt-dlp needs", async () => {
       "accept-language": "ja",
       authorization: "Bearer secret",
       cookie: "SID=secret",
-      origin: "https://www.youtube.com",
+      origin: "https://yt-download.riiimparm.workers.dev",
       range: "bytes=0-1",
-      referer: "https://www.youtube.com/",
+      referer: "https://yt-download.riiimparm.workers.dev/",
       "user-agent": "yt-dlp",
       "x-goog-visitor-id": "visitor",
       "x-youtube-client-name": "1",
@@ -117,9 +117,11 @@ test("forwards only the request headers yt-dlp needs", async () => {
   assert.equal(sent.get("user-agent"), "yt-dlp");
   assert.equal(sent.get("x-youtube-client-name"), "1");
   assert.equal(sent.get("x-goog-visitor-id"), "visitor");
-  assert.equal(sent.get("cookie"), null);
+  assert.equal(sent.get("cookie"), "SOCS=CAI");
   assert.equal(sent.get("authorization"), null);
   assert.equal(sent.get("x-forwarded-for"), null);
+  assert.equal(sent.get("origin"), "https://www.youtube.com");
+  assert.equal(sent.get("referer"), "https://www.youtube.com/");
 });
 
 test("POST forwards a small body and stops when the body is too large", async () => {
@@ -139,7 +141,7 @@ test("POST forwards a small body and stops when the body is too large", async ()
   assert.equal(await response.text(), '{"context":{}}');
   assert.equal(calls[0].init.method, "POST");
   assert.equal(calls[0].init.headers.get("content-type"), "application/json");
-  assert.equal(calls[0].init.headers.get("cookie"), null);
+  assert.equal(calls[0].init.headers.get("cookie"), "SOCS=CAI");
 
   const huge = await handleProxy(proxyRequest(VIDEO, {
     method: "POST",
@@ -223,6 +225,8 @@ test("a redirect to a non-allowlisted host is not fetched", async () => {
   }));
   const protocolRelative = await handleProxy(proxyRequest(VIDEO), { fetchImpl });
   assert.equal(protocolRelative.status, 403);
+  assert.equal(protocolRelative.headers.get("x-yt-redirect-host"), "evil.example");
+  assert.deepEqual(await protocolRelative.json(), { error: "redirect host is not allowed", host: "evil.example" });
   assert.equal(calls.length, 1);
 
   const { calls: calls2, fetchImpl: fetch2 } = jsonFetch(() => new Response(null, {
@@ -239,7 +243,39 @@ test("a redirect to a non-allowlisted host is not fetched", async () => {
   }));
   const insecure = await handleProxy(proxyRequest(VIDEO), { fetchImpl: fetch3 });
   assert.equal(insecure.status, 403);
+  assert.equal(insecure.headers.get("x-yt-redirect-host"), "www.youtube.com");
   assert.equal(calls3.length, 1);
+});
+
+test("a redirect to the Google consent host is followed and the host is not an entry url", async () => {
+  assert.equal(isAllowedRelayUrl("https://consent.google.com/m?continue=https://www.youtube.com/"), false);
+  assert.equal(isAllowedRelayUrl("https://www.google.com/sorry/index"), false);
+
+  const { calls, fetchImpl } = jsonFetch((url, _init, n) => {
+    if (n === 1) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://consent.google.com/m?continue=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DjNQXAC9IVRw" },
+      });
+    }
+    return new Response("watch", { status: 200, headers: { "content-type": "text/html" } });
+  });
+  const response = await handleProxy(proxyRequest(VIDEO), { fetchImpl });
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "watch");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].url, "https://consent.google.com/m?continue=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DjNQXAC9IVRw");
+  assert.equal(calls[1].init.headers.get("cookie"), "SOCS=CAI");
+  assert.equal(calls[1].init.headers.get("origin"), "https://www.youtube.com");
+
+  const { calls: sorryCalls, fetchImpl: sorryFetch } = jsonFetch(() => new Response(null, {
+    status: 302,
+    headers: { location: "https://www.google.com/sorry/index?continue=https%3A%2F%2Fwww.youtube.com%2F" },
+  }));
+  const sorry = await handleProxy(proxyRequest(VIDEO), { fetchImpl: sorryFetch });
+  assert.equal(sorry.status, 403);
+  assert.equal(sorry.headers.get("x-yt-redirect-host"), "www.google.com");
+  assert.equal(sorryCalls.length, 1);
 });
 
 test("POST redirects that change method drop the body", async () => {
