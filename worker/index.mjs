@@ -124,7 +124,28 @@ async function dispatch(request, env) {
       headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
     });
   }
-  return env.ASSETS.fetch(request);
+  return withJavaScriptType(request.url, await env.ASSETS.fetch(request));
+}
+
+// Asset bytes are stored by hash. index.js and index.d.ts were the same
+// bytes, and the upload kept the .ts type text/vnd.trolltech.linguist.
+// A module import rejects that. A hash already stored is not uploaded
+// again, so the response type has to be corrected here.
+export function withJavaScriptType(url, response) {
+  const pathname = new URL(url).pathname;
+  if (response.status !== 200) return response;
+  if (!pathname.endsWith(".js") && !pathname.endsWith(".mjs")) return response;
+  const current = (response.headers.get("content-type") || "").toLowerCase();
+  if (current.startsWith("text/javascript") || current.startsWith("application/javascript")) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set("content-type", "text/javascript");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function normalizeHost(hostname) {
